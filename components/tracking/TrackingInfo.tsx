@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '../../constants/Colors';
-import Card from '../ui/Card';
 
 interface TrackingInfoProps {
   location?: {
@@ -11,6 +10,14 @@ interface TrackingInfoProps {
   };
   batteryLevel?: number;
   driverName?: string;
+}
+
+function Card({ children, style }: { children: React.ReactNode, style?: any }) {
+  return (
+    <View style={[styles.card, style]}>
+      {children}
+    </View>
+  );
 }
 
 export default function TrackingInfo({ 
@@ -62,6 +69,16 @@ export default function TrackingInfo({
 const styles = StyleSheet.create({
   container: {
     marginVertical: 16,
+  },
+  card: {
+    backgroundColor: Colors.card,
+    borderRadius: 8,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   title: {
     fontSize: 18,

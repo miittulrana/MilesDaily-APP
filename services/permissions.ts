@@ -15,7 +15,6 @@ export async function requestLocationPermissions() {
     return false;
   }
   
-  // Request background permissions
   if (Platform.OS === 'ios' || Platform.OS === 'android') {
     const backgroundPermission = await Location.requestBackgroundPermissionsAsync();
     
@@ -31,7 +30,7 @@ export async function requestLocationPermissions() {
   return true;
 }
 
-export async function registerBackgroundTask(taskCallback: TaskManager.TaskManagerTaskCallback) {
+export async function registerBackgroundTask(taskCallback: TaskManager.TaskManagerTaskExecutor<any>) {
   const isRegistered = await TaskManager.isTaskRegisteredAsync(Config.locationTaskName);
   
   if (!isRegistered) {

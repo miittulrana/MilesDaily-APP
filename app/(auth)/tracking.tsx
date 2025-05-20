@@ -11,11 +11,18 @@ import Header from '../../components/common/Header';
 import StatusIndicator from '../../components/tracking/StatusIndicator';
 import TrackingInfo from '../../components/tracking/TrackingInfo';
 import Button from '../../components/ui/Button';
-import Card from '../../components/ui/Card';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorMessage from '../../components/common/ErrorMessage';
 import { Colors } from '../../constants/Colors';
 import Toast from 'react-native-toast-message';
+
+function Card({ children, style }: { children: React.ReactNode, style?: any }) {
+  return (
+    <View style={[styles.card, style]}>
+      {children}
+    </View>
+  );
+}
 
 export default function TrackingScreen() {
   const { user, signOut } = useAuth();
@@ -30,7 +37,7 @@ export default function TrackingScreen() {
     isTracking,
     startLocationTracking,
     stopLocationTracking
-  } = useLocation(user?.id);
+  } = useLocation((user as any)?.id);
 
   useEffect(() => {
     async function initializeTracking() {
@@ -38,21 +45,16 @@ export default function TrackingScreen() {
         setLoading(true);
         
         if (user) {
-          // Ensure the driver exists in the database
-          await createDriverIfNotExists(user);
+          await createDriverIfNotExists(user as any);
           
-          // Get driver info
-          const driverData = await getDriver(user.id);
+          const driverData = await getDriver((user as any).id);
           setDriverInfo(driverData);
           
-          // Request permissions
           const hasPermission = await requestLocationPermissions();
           
           if (hasPermission) {
-            // Start tracking automatically
             await startLocationTracking();
             
-            // Initialize background tracking
             await startBackgroundLocationUpdates();
             
             Toast.show({
@@ -73,7 +75,6 @@ export default function TrackingScreen() {
     
     initializeTracking();
     
-    // Clean up when component unmounts
     return () => {
       stopLocationTracking();
     };
@@ -132,12 +133,12 @@ export default function TrackingScreen() {
         <StatusIndicator
           isTracking={isTracking}
           lastUpdate={formatLastUpdate()}
-          batteryLevel={batteryLevel}
+          batteryLevel={batteryLevel !== null ? batteryLevel : undefined}
         />
         
         <TrackingInfo
           location={location?.coords}
-          batteryLevel={batteryLevel}
+          batteryLevel={batteryLevel !== null ? batteryLevel : undefined}
           driverName={driverInfo?.name}
         />
         
@@ -173,6 +174,17 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 16,
+  },
+  card: {
+    backgroundColor: Colors.card,
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   infoCard: {
     marginTop: 16,
