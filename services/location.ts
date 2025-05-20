@@ -5,9 +5,15 @@ import { LocationData } from '../types/location';
 import { startBackgroundLocationUpdates, stopBackgroundLocationUpdates } from '../utils/locationTask';
 import { requestLocationPermissions } from './permissions';
 
+interface StartTrackingResult {
+  status: boolean;
+  error?: string;
+  subscription?: Location.LocationSubscription;
+}
+
 export const startLocationTracking = async (
   onLocationUpdate: (location: LocationData, batteryLevel: number) => void
-): Promise<{ status: boolean; error?: string }> => {
+): Promise<StartTrackingResult> => {
   try {
     const hasPermission = await requestLocationPermissions();
     
@@ -68,7 +74,7 @@ export const stopLocationTracking = async (subscription?: Location.LocationSubsc
   }
 };
 
-\export const getCurrentLocation = async (): Promise<{ location: Location.LocationObject | null; error?: string }> => {
+export const getCurrentLocation = async (): Promise<{ location: Location.LocationObject | null; error?: string }> => {
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
     

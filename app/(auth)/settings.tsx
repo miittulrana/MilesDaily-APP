@@ -5,10 +5,19 @@ import { useAuth } from '../../hooks/useAuth';
 import { getDriver } from '../../services/database';
 import Header from '../../components/common/Header';
 import Button from '../../components/ui/Button';
-import Card from '../../components/ui/Card';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { Colors } from '../../constants/Colors';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { stopBackgroundLocationUpdates } from '../../utils/locationTask';
+
+import { View as CardView } from 'react-native';
+
+function Card({ children, style }: { children: React.ReactNode, style?: any }) {
+  return (
+    <View style={[styles.card, style]}>
+      {children}
+    </View>
+  );
+}
 
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
@@ -19,7 +28,8 @@ export default function SettingsScreen() {
     async function loadDriverInfo() {
       if (user) {
         try {
-          const data = await getDriver(user.id);
+          const userId = (user as any).id;
+          const data = await getDriver(userId);
           setDriverInfo(data);
         } catch (error) {
           console.error('Error loading driver info:', error);
@@ -42,7 +52,6 @@ export default function SettingsScreen() {
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
-            // Stop background tracking before logout
             await stopBackgroundLocationUpdates();
             await signOut();
           },
@@ -122,6 +131,17 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 16,
+  },
+  card: {
+    backgroundColor: Colors.card,
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   profileCard: {
     marginBottom: 16,

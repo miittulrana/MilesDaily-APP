@@ -1,13 +1,23 @@
 import { useState, useEffect, useRef } from 'react';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import { throttle } from 'lodash';
+import * as Battery from 'expo-battery';
+import { throttle as lodashThrottle } from 'lodash';
 import supabase from '../utils/supabase';
 import { Config } from '../constants/Config';
 import Toast from 'react-native-toast-message';
 import { useBattery } from './useBattery';
 
 const LOCATION_TASK_NAME = Config.locationTaskName;
+
+const throttle = lodashThrottle as <T extends (...args: any[]) => any>(
+  func: T,
+  wait?: number,
+  options?: {
+    leading?: boolean;
+    trailing?: boolean;
+  }
+) => T;
 
 export function useLocation(userId: string | undefined) {
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
@@ -23,7 +33,6 @@ export function useLocation(userId: string | undefined) {
     const { latitude, longitude, speed } = coords;
 
     try {
-      // Update live location
       await supabase
         .from('locations')
         .upsert({
@@ -35,7 +44,6 @@ export function useLocation(userId: string | undefined) {
           updated_at: new Date().toISOString()
         });
 
-      // Insert into location history
       await supabase
         .from('location_logs')
         .insert({
@@ -75,10 +83,8 @@ export function useLocation(userId: string | undefined) {
     const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
     if (backgroundStatus !== 'granted') {
       setErrorMsg('Permission to access location in background was denied');
-      // Continue anyway with foreground only
     }
 
-    // Define the background task
     TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       if (error) {
         console.error(error);
@@ -89,14 +95,12 @@ export function useLocation(userId: string | undefined) {
         const location = locations[0];
         
         if (location) {
-          // Get battery level for background updates
-          const battery = await Battery.getBatteryLevelAsync();
-          await updateLocation(location, battery);
+          const batteryLevel = await Battery.getBatteryLevelAsync();
+          await updateLocation(location, batteryLevel);
         }
       }
     });
 
-    // Start background location updates
     await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
       accuracy: Location.Accuracy.High,
       timeInterval: Config.locationUpdateInterval,
@@ -108,7 +112,6 @@ export function useLocation(userId: string | undefined) {
       },
     });
 
-    // Start foreground location updates
     foregroundSubscription.current = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.High,
