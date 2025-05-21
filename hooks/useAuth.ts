@@ -25,16 +25,34 @@ export function useAuth() {
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    return { error };
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      
+      if (error) {
+        console.error('Auth error:', error);
+        return { error };
+      }
+      
+      return { data, error: null };
+    } catch (err: any) {
+      console.error('Sign in error:', err);
+      return { error: err };
+    } finally {
+      setLoading(false);
+    }
   };
 
   const signOut = async () => {
     setLoading(true);
-    const { error } = await supabase.auth.signOut();
-    setLoading(false);
-    return { error };
+    try {
+      const { error } = await supabase.auth.signOut();
+      return { error };
+    } catch (err: any) {
+      console.error('Sign out error:', err);
+      return { error: err };
+    } finally {
+      setLoading(false);
+    }
   };
 
   return {

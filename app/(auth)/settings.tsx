@@ -60,6 +60,18 @@ export default function SettingsScreen() {
     );
   };
 
+  const getDisplayName = () => {
+    if (!driverInfo) return 'N/A';
+    
+    if (driverInfo.name) return driverInfo.name;
+    
+    if (driverInfo.first_name || driverInfo.last_name) {
+      return `${driverInfo.first_name || ''} ${driverInfo.last_name || ''}`.trim();
+    }
+    
+    return driverInfo.email ? driverInfo.email.split('@')[0] : 'N/A';
+  };
+
   if (loading) {
     return <LoadingSpinner fullScreen message="Loading settings..." />;
   }
@@ -78,7 +90,7 @@ export default function SettingsScreen() {
           
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Name:</Text>
-            <Text style={styles.infoValue}>{driverInfo?.name || 'N/A'}</Text>
+            <Text style={styles.infoValue}>{getDisplayName()}</Text>
           </View>
           
           <View style={styles.infoRow}>

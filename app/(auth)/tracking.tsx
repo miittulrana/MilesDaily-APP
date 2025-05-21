@@ -44,18 +44,44 @@ export default function TrackingScreen() {
       try {
         setLoading(true);
         
-        if (user) {
+        if (!user) {
+          setError('User is not authenticated. Please log in again.');
+          setLoading(false);
+          return;
+        }
+        
+        console.log('Initializing tracking for user:', (user as any).id);
+        
+        try {
           await createDriverIfNotExists(user as any);
-          
+          console.log('Driver created or verified');
+        } catch (driverError: any) {
+          console.error('Error creating driver:', driverError);
+          // Continue anyway - we'll handle display if driver info is missing
+        }
+        
+        try {
           const driverData = await getDriver((user as any).id);
+          console.log('Driver data loaded:', driverData);
           setDriverInfo(driverData);
+        } catch (driverDataError: any) {
+          console.error('Error loading driver data:', driverDataError);
+          // Continue anyway with default driver info
+          setDriverInfo({
+            id: (user as any).id,
+            name: 'Driver',
+            email: (user as any).email || 'Unknown'
+          });
+        }
+        
+        const hasPermission = await requestLocationPermissions();
+        
+        if (hasPermission) {
+          await startLocationTracking();
           
-          const hasPermission = await requestLocationPermissions();
-          
-          if (hasPermission) {
-            await startLocationTracking();
-            
+          try {
             await startBackgroundLocationUpdates();
+            console.log('Background location updates started');
             
             Toast.show({
               type: 'success',
@@ -63,7 +89,12 @@ export default function TrackingScreen() {
               text2: 'Your location is being tracked',
               position: 'bottom',
             });
+          } catch (bgError: any) {
+            console.error('Error starting background updates:', bgError);
+            // Continue anyway - foreground tracking still works
           }
+        } else {
+          setError('Location permission denied. Tracking disabled.');
         }
       } catch (err: any) {
         console.error('Error initializing tracking:', err);

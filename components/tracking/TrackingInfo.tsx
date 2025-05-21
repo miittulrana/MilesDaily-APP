@@ -31,7 +31,7 @@ export default function TrackingInfo({
       
       <View style={styles.infoRow}>
         <Text style={styles.infoLabel}>Driver:</Text>
-        <Text style={styles.infoValue}>{driverName}</Text>
+        <Text style={styles.infoValue}>{driverName || 'Driver'}</Text>
       </View>
       
       {location && (

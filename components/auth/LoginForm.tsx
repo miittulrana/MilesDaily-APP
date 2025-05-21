@@ -22,22 +22,27 @@ export default function LoginForm() {
     setError('');
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      // Step 1: Try normal sign in
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) {
-        setError(error.message);
+      // If successful login, proceed
+      if (data?.user) {
+        console.log('Login successful, redirecting to tracking screen');
+        router.replace('/(auth)/tracking');
         return;
       }
 
-      if (data.user) {
-        router.replace('/(auth)/tracking');
+      // If error, display it
+      if (signInError) {
+        console.error('Login error:', signInError.message);
+        setError(signInError.message);
       }
-    } catch (err) {
-      setError('An unexpected error occurred');
-      console.error(err);
+    } catch (err: any) {
+      console.error('Unexpected login error:', err);
+      setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
