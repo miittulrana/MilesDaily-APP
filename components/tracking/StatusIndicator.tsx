@@ -17,7 +17,6 @@ export default function StatusIndicator({
   const statusColor = isTracking ? Colors.success : Colors.error;
   const statusText = isTracking ? 'Active Tracking' : 'Tracking Inactive';
   
-  // Format battery percentage for display
   const batteryPercentage = batteryLevel !== undefined 
     ? `${Math.round(batteryLevel * 100)}%` 
     : 'Unknown';

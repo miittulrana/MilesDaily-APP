@@ -10,7 +10,6 @@ export default function Index() {
     return <LoadingSpinner fullScreen message="Loading..." />;
   }
 
-  // Redirect to the appropriate screen based on authentication status
   if (session) {
     return <Redirect href="/(auth)/tracking" />;
   } else {

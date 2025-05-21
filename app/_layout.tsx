@@ -1,3 +1,4 @@
+import '../polyfills';
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Redirect, Stack } from 'expo-router';
@@ -7,12 +8,10 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 export default function RootLayout() {
   const { session, loading } = useAuth();
 
-  // Show loading spinner while checking authentication
   if (loading) {
     return <LoadingSpinner fullScreen message="Loading..." />;
   }
 
-  // Redirect if user is already logged in
   if (session) {
     return <Redirect href="/(auth)/tracking" />;
   }

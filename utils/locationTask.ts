@@ -4,7 +4,6 @@ import * as Battery from 'expo-battery';
 import { Config } from '../constants/Config';
 import supabase from './supabase';
 
-// Register background task for location updates
 TaskManager.defineTask(Config.locationTaskName, async ({ data, error }) => {
   if (error) {
     console.error('Error in background location task:', error);
@@ -25,7 +24,6 @@ TaskManager.defineTask(Config.locationTaskName, async ({ data, error }) => {
   }
   
   try {
-    // Get the current user
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       console.log('No active session found for background task');
@@ -34,14 +32,12 @@ TaskManager.defineTask(Config.locationTaskName, async ({ data, error }) => {
     
     const userId = session.user.id;
     
-    // Get battery level
     const batteryLevel = await Battery.getBatteryLevelAsync();
     const batteryPercentage = Math.round(batteryLevel * 100);
     
     const { latitude, longitude, speed } = location.coords;
     const timestamp = new Date(location.timestamp).toISOString();
     
-    // Update live location
     await supabase
       .from('locations')
       .upsert({
@@ -53,7 +49,6 @@ TaskManager.defineTask(Config.locationTaskName, async ({ data, error }) => {
         updated_at: new Date().toISOString()
       });
     
-    // Insert into location history
     await supabase
       .from('location_logs')
       .insert({
@@ -78,7 +73,6 @@ export const startBackgroundLocationUpdates = async () => {
     return false;
   }
   
-  // Check if the task is already running
   const isTaskRunning = await Location.hasStartedLocationUpdatesAsync(Config.locationTaskName)
     .catch(() => false);
   

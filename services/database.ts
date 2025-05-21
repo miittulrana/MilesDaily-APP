@@ -41,7 +41,6 @@ export async function createDriverIfNotExists(user: User) {
 }
 
 export async function updateLocation(userId: string, locationData: LocationData) {
-  // Update the current location
   const { error: liveError } = await supabase
     .from('locations')
     .upsert({
@@ -55,7 +54,6 @@ export async function updateLocation(userId: string, locationData: LocationData)
   
   if (liveError) throw liveError;
   
-  // Add to location history
   const { error: logError } = await supabase
     .from('location_logs')
     .insert([

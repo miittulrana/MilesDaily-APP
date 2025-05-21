@@ -6,12 +6,10 @@ import LoadingSpinner from '../../components/common/LoadingSpinner';
 export default function AuthLayout() {
   const { session, loading } = useAuth();
 
-  // Show loading spinner while checking authentication
   if (loading) {
     return <LoadingSpinner fullScreen message="Loading..." />;
   }
 
-  // Redirect if user is not logged in
   if (!session) {
     return <Redirect href="/login" />;
   }
