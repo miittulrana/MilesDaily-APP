@@ -46,9 +46,7 @@ export default function DashboardScreen() {
   };
 
   const navigateToModule = (module: string) => {
-    if (module === 'profile') {
-      router.push('/(dashboard)/profile');
-    } else if (module === 'fuel') {
+    if (module === 'fuel') {
       router.push('/(dashboard)/fuel');
     }
   };
@@ -70,18 +68,13 @@ export default function DashboardScreen() {
       </View>
 
       <View style={styles.modulesSection}>
+        <Text style={styles.sectionTitle}>Modules</Text>
         <View style={styles.modulesGrid}>
           <ModuleCard
             title="Fuel"
             description="Record and track fuel expenses"
             iconName="water"
             onPress={() => navigateToModule('fuel')}
-          />
-          <ModuleCard
-            title="Profile"
-            description="View and manage your profile"
-            iconName="person"
-            onPress={() => navigateToModule('profile')}
           />
         </View>
       </View>

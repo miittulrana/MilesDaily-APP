@@ -118,7 +118,7 @@ export default function FuelRecordsScreen() {
         <View style={styles.vehicleInfo}>
           <Text style={styles.vehicleLabel}>Vehicle:</Text>
           <Text style={styles.vehicleText}>
-            {vehicle.license_plate} • {vehicle.type || 'N/A'} • {vehicle.fuel_type || 'N/A'}
+            {vehicle.license_plate} • {vehicle.brand} {vehicle.model}
           </Text>
         </View>
         <TouchableOpacity style={styles.addButton} onPress={handleAddFuel}>
