@@ -1,14 +1,12 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import LoadingIndicator from '../../components/LoadingIndicator';
+import ModuleCard from '../../components/ModuleCard';
 import { colors } from '../../constants/colors';
 import { layouts } from '../../constants/layouts';
 import { getAssignedVehicle, getDriverInfo } from '../../lib/auth';
-import { useFuelStats } from '../../modules/fuel/fuelHooks';
-import { DriverInfo } from '../../modules/fuel/fuelTypes';
-import { formatConsumption, formatCurrency, formatDistance } from '../../utils/numberUtils';
+import { DriverInfo } from '../../utils/types';
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -16,8 +14,6 @@ export default function DashboardScreen() {
   const [vehicle, setVehicle] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   
-  const { stats, loading: statsLoading } = useFuelStats(driver?.id || '');
-
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -55,8 +51,12 @@ export default function DashboardScreen() {
     }
   };
 
-  const navigateToFuel = () => {
-    router.push('/fuel');
+  const navigateToModule = (module: string) => {
+    if (module === 'profile') {
+      router.push('/(dashboard)/profile');
+    } else if (module === 'fuel') {
+      router.push('/(dashboard)/fuel');
+    }
   };
 
   if (loading) {
@@ -89,7 +89,6 @@ export default function DashboardScreen() {
         </View>
       ) : (
         <View style={styles.noVehicleCard}>
-          <Ionicons name="car-outline" size={32} color={colors.gray400} />
           <Text style={styles.noVehicleText}>No vehicle assigned</Text>
         </View>
       )}
@@ -97,39 +96,20 @@ export default function DashboardScreen() {
       <View style={styles.modulesSection}>
         <Text style={styles.sectionTitle}>Modules</Text>
         <View style={styles.modulesGrid}>
-          <TouchableOpacity style={styles.moduleCard} onPress={navigateToFuel}>
-            <View style={styles.moduleIconContainer}>
-              <Ionicons name="water" size={24} color={colors.primary} />
-            </View>
-            <Text style={styles.moduleTitle}>Fuel</Text>
-            <Text style={styles.moduleDescription}>Record and track fuel expenses</Text>
-          </TouchableOpacity>
+          <ModuleCard
+            title="Fuel"
+            description="Record and track fuel expenses"
+            iconName="water"
+            onPress={() => navigateToModule('fuel')}
+          />
+          <ModuleCard
+            title="Profile"
+            description="View and manage your profile"
+            iconName="person"
+            onPress={() => navigateToModule('profile')}
+          />
         </View>
       </View>
-
-      {!statsLoading && stats && (
-        <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>Fuel Statistics</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{formatCurrency(stats.total_spent_euros)}</Text>
-              <Text style={styles.statLabel}>Total Spent</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{formatDistance(stats.total_distance_km)}</Text>
-              <Text style={styles.statLabel}>Total Distance</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{formatConsumption(stats.avg_consumption_per_100km)}</Text>
-              <Text style={styles.statLabel}>Avg. Consumption</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{stats.record_count}</Text>
-              <Text style={styles.statLabel}>Records</Text>
-            </View>
-          </View>
-        </View>
-      )}
     </ScrollView>
   );
 }
@@ -238,72 +218,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: layouts.spacing.md,
-  },
-  moduleCard: {
-    backgroundColor: colors.card,
-    borderRadius: layouts.borderRadius.lg,
-    padding: layouts.spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.gray200,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-    width: '100%',
-    alignItems: 'center',
-  },
-  moduleIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: layouts.borderRadius.md,
-    backgroundColor: colors.gray100,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: layouts.spacing.md,
-  },
-  moduleTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: layouts.spacing.xs,
-  },
-  moduleDescription: {
-    fontSize: 14,
-    color: colors.textLight,
-    textAlign: 'center',
-  },
-  statsSection: {
-    marginBottom: layouts.spacing.xl,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: layouts.spacing.md,
-  },
-  statCard: {
-    backgroundColor: colors.card,
-    borderRadius: layouts.borderRadius.lg,
-    padding: layouts.spacing.md,
-    borderWidth: 1,
-    borderColor: colors.gray200,
-    width: '47%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.primary,
-    marginBottom: layouts.spacing.xs,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: colors.textLight,
   },
 });

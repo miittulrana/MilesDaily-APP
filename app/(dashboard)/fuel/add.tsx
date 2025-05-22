@@ -15,23 +15,22 @@ import LoadingIndicator from '../../../components/LoadingIndicator';
 import { colors } from '../../../constants/colors';
 import { layouts } from '../../../constants/layouts';
 import { getDriverInfo } from '../../../lib/auth';
-import { useAssignedVehicle, useFuelPrice } from '../../../modules/fuel/fuelHooks';
-import { createFuelRecord } from '../../../modules/fuel/fuelService';
-import { DriverInfo } from '../../../modules/fuel/fuelTypes';
+import { useFuelPrice } from '../../../lib/hooks';
+import { createFuelRecord } from '../../../lib/fuelService';
+import { DriverInfo } from '../../../utils/types';
 import { parseFloatSafe } from '../../../utils/numberUtils';
 import { validateFuelRecordForm } from '../../../utils/validators';
+import { supabase } from '../../../lib/supabase';
 
 export default function AddFuelScreen() {
-  const router = useRouter();
   const [driver, setDriver] = useState<DriverInfo | null>(null);
+  const [vehicle, setVehicle] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   
   const [formData, setFormData] = useState({
     amount_euros: '',
     current_km: '',
-    notes: '',
-    location: '',
   });
   
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -39,8 +38,35 @@ export default function AddFuelScreen() {
   useEffect(() => {
     const loadDriver = async () => {
       try {
+        setLoading(true);
         const driverData = await getDriverInfo();
         setDriver(driverData);
+        
+        if (driverData?.id) {
+          try {
+            const vehicleResponse = await fetch(`https://fleet.milesxp.com/api/drivers/${driverData.id}/vehicle`);
+            if (vehicleResponse.ok) {
+              const vehicleData = await vehicleResponse.json();
+              if (vehicleData) {
+                setVehicle(vehicleData);
+              }
+            } else {
+              throw new Error('Web API vehicle fetch failed');
+            }
+          } catch (apiError) {
+            console.error('Error fetching from API, falling back to local DB:', apiError);
+            const { data: localVehicle } = await supabase
+              .from('vehicles')
+              .select('*')
+              .eq('driver_id', driverData.id)
+              .eq('status', 'assigned')
+              .single();
+              
+            if (localVehicle) {
+              setVehicle(localVehicle);
+            }
+          }
+        }
       } catch (error) {
         console.error('Error loading driver info:', error);
       } finally {
@@ -51,7 +77,6 @@ export default function AddFuelScreen() {
     loadDriver();
   }, []);
 
-  const { vehicle, loading: vehicleLoading } = useAssignedVehicle(driver?.id || '');
   const { price, loading: priceLoading } = useFuelPrice(vehicle?.fuel_type || 'diesel');
 
   const handleChange = (name: string, value: string) => {
@@ -60,7 +85,6 @@ export default function AddFuelScreen() {
       [name]: value,
     });
     
-    // Clear error for this field when value changes
     if (errors[name]) {
       setErrors({
         ...errors,
@@ -70,7 +94,6 @@ export default function AddFuelScreen() {
   };
 
   const handleSubmit = async () => {
-    // Validate form
     const validation = validateFuelRecordForm(formData);
     
     if (!validation.valid) {
@@ -101,8 +124,6 @@ export default function AddFuelScreen() {
           vehicle_id: vehicle.id,
           amount_euros: parseFloatSafe(formData.amount_euros),
           current_km: parseFloatSafe(formData.current_km),
-          notes: formData.notes || undefined,
-          location: formData.location || undefined,
         },
         driver.id,
         price
@@ -130,7 +151,7 @@ export default function AddFuelScreen() {
     router.back();
   };
 
-  if (loading || vehicleLoading || priceLoading) {
+  if (loading || priceLoading) {
     return <LoadingIndicator fullScreen message="Loading..." />;
   }
 
@@ -193,23 +214,6 @@ export default function AddFuelScreen() {
             keyboardType="numeric"
             error={errors.current_km}
             required
-          />
-          
-          <FormInput
-            label="Location"
-            placeholder="Enter location (optional)"
-            value={formData.location}
-            onChangeText={(value) => handleChange('location', value)}
-          />
-          
-          <FormInput
-            label="Notes"
-            placeholder="Enter notes (optional)"
-            value={formData.notes}
-            onChangeText={(value) => handleChange('notes', value)}
-            multiline
-            numberOfLines={3}
-            style={styles.notesInput}
           />
         </View>
 

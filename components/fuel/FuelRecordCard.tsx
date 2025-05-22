@@ -1,15 +1,16 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors } from '../constants/colors';
-import { FuelRecord } from '../modules/fuel/fuelTypes';
-import { formatDateTime } from '../utils/dateUtils';
-import { formatCurrency, formatDistance } from '../utils/numberUtils';
+import { colors } from '../../constants/colors';
+import { FuelRecord } from '../../utils/types';
+import { formatDateTime } from '../../utils/dateUtils';
+import { formatCurrency, formatDistance } from '../../utils/numberUtils';
 
 type FuelRecordCardProps = {
   record: FuelRecord;
   onPress?: (record: FuelRecord) => void;
+  showManualTag?: boolean;
 };
 
-export default function FuelRecordCard({ record, onPress }: FuelRecordCardProps) {
+export default function FuelRecordCard({ record, onPress, showManualTag = false }: FuelRecordCardProps) {
   const handlePress = () => {
     if (onPress) {
       onPress(record);
@@ -48,9 +49,9 @@ export default function FuelRecordCard({ record, onPress }: FuelRecordCardProps)
         )}
       </View>
       
-      {record.is_manual_entry && (
+      {showManualTag && record.is_manual_entry && (
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>Manual Entry</Text>
+          <Text style={styles.badgeText}>Admin Entry</Text>
         </View>
       )}
     </TouchableOpacity>
