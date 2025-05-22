@@ -10,16 +10,16 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import FormInput from '../../../components/FormInput';
-import LoadingIndicator from '../../../components/LoadingIndicator';
-import { colors } from '../../../constants/colors';
-import { layouts } from '../../../constants/layouts';
-import { getDriverInfo } from '../../../lib/auth';
-import { useAssignedVehicle, useFuelPrice } from '../../../modules/fuel/fuelHooks';
-import { createFuelRecord } from '../../../modules/fuel/fuelService';
-import { DriverInfo } from '../../../modules/fuel/fuelTypes';
-import { parseFloatSafe } from '../../../utils/numberUtils';
-import { validateFuelRecordForm } from '../../../utils/validators';
+import FormInput from '../../../../components/FormInput';
+import LoadingIndicator from '../../../../components/LoadingIndicator';
+import { colors } from '../../../../constants/colors';
+import { layouts } from '../../../../constants/layouts';
+import { getDriverInfo } from '../../../../lib/auth';
+import { useAssignedVehicle, useFuelPrice } from '../hooks';
+import { createFuelRecord } from '../services';
+import { DriverInfo } from '../types';
+import { parseFloatSafe } from '../../../../utils/numberUtils';
+import { validateFuelRecordForm } from '../../../../utils/validators';
 
 export default function AddFuelScreen() {
   const router = useRouter();

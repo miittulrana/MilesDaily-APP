@@ -1,8 +1,8 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors } from '../constants/colors';
-import { FuelRecord } from '../modules/fuel/fuelTypes';
-import { formatDateTime } from '../utils/dateUtils';
-import { formatCurrency, formatDistance } from '../utils/numberUtils';
+import { colors } from '../../../../constants/colors';
+import { FuelRecord } from '../../fuel/types';
+import { formatDateTime } from '../../../../utils/dateUtils';
+import { formatCurrency, formatDistance } from '../../../../utils/numberUtils';
 
 type FuelRecordCardProps = {
   record: FuelRecord;

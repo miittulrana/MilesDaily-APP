@@ -6,8 +6,8 @@ import LoadingIndicator from '../components/LoadingIndicator';
 import { colors } from '../constants/colors';
 import { layouts } from '../constants/layouts';
 import { getAssignedVehicle, getDriverInfo } from '../lib/auth';
-import { useFuelStats } from '../modules/fuel/fuelHooks';
-import { DriverInfo } from '../modules/fuel/fuelTypes';
+import { useFuelStats } from '../app/(app)/fuel/hooks';
+import { DriverInfo } from '../app/(app)/fuel/types';
 import { formatConsumption, formatCurrency, formatDistance } from '../utils/numberUtils';
 
 export default function DashboardScreen() {

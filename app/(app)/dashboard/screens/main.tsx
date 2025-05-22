@@ -2,15 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import LoadingIndicator from '../../components/LoadingIndicator';
-import { colors } from '../../constants/colors';
-import { layouts } from '../../constants/layouts';
-import { getAssignedVehicle, getDriverInfo } from '../../lib/auth';
-import { useFuelStats } from '../../modules/fuel/fuelHooks';
-import { DriverInfo } from '../../modules/fuel/fuelTypes';
-import { formatConsumption, formatCurrency, formatDistance } from '../../utils/numberUtils';
+import LoadingIndicator from '../../../../components/LoadingIndicator';
+import { colors } from '../../../../constants/colors';
+import { layouts } from '../../../../constants/layouts';
+import { getAssignedVehicle, getDriverInfo } from '../../../../lib/auth';
+import { useFuelStats } from '../../fuel/hooks';
+import { DriverInfo } from '../../fuel/types';
+import { formatConsumption, formatCurrency, formatDistance } from '../../../../utils/numberUtils';
 
-export default function DashboardScreen() {
+export default function DashboardMainScreen() {
   const router = useRouter();
   const [driver, setDriver] = useState<DriverInfo | null>(null);
   const [vehicle, setVehicle] = useState<any | null>(null);
@@ -56,7 +56,7 @@ export default function DashboardScreen() {
   };
 
   const navigateToFuel = () => {
-    router.push('/fuel');
+    router.push('/(app)/fuel');
   };
 
   if (loading) {

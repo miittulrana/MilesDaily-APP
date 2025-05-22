@@ -35,24 +35,25 @@ export default function AppLayout() {
       }}
     >
       <Tabs.Screen
-        name="index"
+        name="dashboard"
         options={{
           title: 'Dashboard',
           tabBarLabel: 'Home',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="home" size={size} color={color} />
           ),
+          headerShown: false,
         }}
       />
       <Tabs.Screen
-        name="fuel/index"
+        name="fuel"
         options={{
           title: 'Fuel Records',
           tabBarLabel: 'Fuel',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="water" size={size} color={color} />
           ),
-          headerShown: false, // Hide this header as we'll handle it in the fuel stack
+          headerShown: false,
         }}
       />
       <Tabs.Screen
@@ -63,6 +64,7 @@ export default function AppLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person" size={size} color={color} />
           ),
+          headerShown: false,
         }}
       />
     </Tabs>

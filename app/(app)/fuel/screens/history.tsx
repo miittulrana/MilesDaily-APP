@@ -2,16 +2,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import ErrorMessage from '../../../components/ErrorMessage';
-import FuelRecordCard from '../../../components/FuelRecordCard';
-import LoadingIndicator from '../../../components/LoadingIndicator';
-import { colors } from '../../../constants/colors';
-import { layouts } from '../../../constants/layouts';
-import { getDriverInfo } from '../../../lib/auth';
-import { useAssignedVehicle, useFuelRecords } from '../../../modules/fuel/fuelHooks';
-import { DriverInfo } from '../../../modules/fuel/fuelTypes';
+import ErrorMessage from '../../../../components/ErrorMessage';
+import LoadingIndicator from '../../../../components/LoadingIndicator';
+import { colors } from '../../../../constants/colors';
+import { layouts } from '../../../../constants/layouts';
+import { getDriverInfo } from '../../../../lib/auth';
+import { useAssignedVehicle, useFuelRecords } from '../hooks';
+import { DriverInfo } from '../types';
+import FuelRecordCard from '../components/FuelRecordCard';
 
-export default function FuelRecordsScreen() {
+export default function FuelHistoryScreen() {
   const router = useRouter();
   const [driver, setDriver] = useState<DriverInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,7 +48,11 @@ export default function FuelRecordsScreen() {
   }, [driver, refetch, router]);
 
   const handleAddFuel = () => {
-    router.push('/fuel/add');
+    router.push('/(app)/fuel/screens/add');
+  };
+  
+  const handleShowStats = () => {
+    router.push('/(app)/fuel/screens/stats');
   };
 
   if (loading || vehicleLoading) {
@@ -80,10 +84,16 @@ export default function FuelRecordsScreen() {
             {vehicle.license_plate} • {vehicle.brand} {vehicle.model}
           </Text>
         </View>
-        <TouchableOpacity style={styles.addButton} onPress={handleAddFuel}>
-          <Ionicons name="add" size={20} color={colors.background} />
-          <Text style={styles.addButtonText}>Add Fuel</Text>
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity style={styles.statsButton} onPress={handleShowStats}>
+            <Ionicons name="bar-chart" size={18} color={colors.primary} />
+            <Text style={styles.statsButtonText}>Stats</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.addButton} onPress={handleAddFuel}>
+            <Ionicons name="add" size={20} color={colors.background} />
+            <Text style={styles.addButtonText}>Add Fuel</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {recordsLoading ? (
@@ -156,6 +166,27 @@ const styles = StyleSheet.create({
   vehicleText: {
     fontSize: 14,
     color: colors.text,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: layouts.spacing.sm,
+  },
+  statsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.gray100,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: layouts.borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+  },
+  statsButtonText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: layouts.spacing.xs,
   },
   addButton: {
     flexDirection: 'row',

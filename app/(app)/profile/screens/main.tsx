@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import LoadingIndicator from '../../components/LoadingIndicator';
-import { colors } from '../../constants/colors';
-import { layouts } from '../../constants/layouts';
-import { getDriverInfo, signOut } from '../../lib/auth';
-import { DriverInfo } from '../../modules/fuel/fuelTypes';
+import LoadingIndicator from '../../../../components/LoadingIndicator';
+import { colors } from '../../../../constants/colors';
+import { layouts } from '../../../../constants/layouts';
+import { getDriverInfo, signOut } from '../../../../lib/auth';
+import { DriverInfo } from '../../fuel/types';
 
 export default function ProfileScreen() {
   const [driver, setDriver] = useState<DriverInfo | null>(null);
