@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getAssignedVehicle, getCurrentFuelPrice, getFuelRecords, getFuelStats } from './fuelService';
+import { getFuelRecords, getFuelStats, getAssignedVehicle as getVehicle, getCurrentFuelPrice } from './fuelService';
 import { FuelRecord, FuelStats, Vehicle } from './fuelTypes';
 
 export const useFuelRecords = (driverId: string) => {
@@ -14,10 +14,16 @@ export const useFuelRecords = (driverId: string) => {
       setLoading(true);
       setError(null);
       const data = await getFuelRecords(driverId);
-      setRecords(data);
+      
+      // Sort records by date (newest first)
+      const sortedRecords = [...data].sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      
+      setRecords(sortedRecords);
     } catch (err) {
-      setError('Failed to load fuel records');
       console.error('Error in useFuelRecords:', err);
+      setError('Failed to load fuel records');
     } finally {
       setLoading(false);
     }
@@ -41,11 +47,11 @@ export const useAssignedVehicle = (driverId: string) => {
     try {
       setLoading(true);
       setError(null);
-      const data = await getAssignedVehicle(driverId);
+      const data = await getVehicle(driverId);
       setVehicle(data);
     } catch (err) {
-      setError('Failed to load assigned vehicle');
       console.error('Error in useAssignedVehicle:', err);
+      setError('Failed to load assigned vehicle');
     } finally {
       setLoading(false);
     }
@@ -72,8 +78,8 @@ export const useFuelPrice = (fuelType: string) => {
       const data = await getCurrentFuelPrice(fuelType);
       setPrice(data);
     } catch (err) {
-      setError('Failed to load fuel price');
       console.error('Error in useFuelPrice:', err);
+      setError('Failed to load fuel price');
     } finally {
       setLoading(false);
     }
@@ -100,8 +106,8 @@ export const useFuelStats = (driverId: string) => {
       const data = await getFuelStats(driverId);
       setStats(data);
     } catch (err) {
-      setError('Failed to load fuel statistics');
       console.error('Error in useFuelStats:', err);
+      setError('Failed to load fuel statistics');
     } finally {
       setLoading(false);
     }

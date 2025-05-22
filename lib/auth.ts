@@ -1,4 +1,6 @@
-import * as SecureStore from 'expo-secure-store';
+// Update your lib/auth.ts file to use AsyncStorage instead of SecureStore
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { config } from '../constants/config';
 import { supabase } from './supabase';
 
@@ -33,7 +35,7 @@ export const signIn = async (email: string, password: string) => {
         return { error: { message: 'Your account is inactive. Please contact administrator.' } };
       }
 
-      await SecureStore.setItemAsync(
+      await AsyncStorage.setItem(
         config.storage.userInfoKey,
         JSON.stringify(driverData)
       );
@@ -55,12 +57,12 @@ export const signIn = async (email: string, password: string) => {
 
 export const signOut = async () => {
   await supabase.auth.signOut();
-  await SecureStore.deleteItemAsync(config.storage.userInfoKey);
+  await AsyncStorage.removeItem(config.storage.userInfoKey);
 };
 
 export const getDriverInfo = async () => {
   try {
-    const storedInfo = await SecureStore.getItemAsync(config.storage.userInfoKey);
+    const storedInfo = await AsyncStorage.getItem(config.storage.userInfoKey);
     
     if (storedInfo) {
       return JSON.parse(storedInfo);
@@ -82,7 +84,7 @@ export const getDriverInfo = async () => {
       return null;
     }
     
-    await SecureStore.setItemAsync(
+    await AsyncStorage.setItem(
       config.storage.userInfoKey,
       JSON.stringify(data)
     );
