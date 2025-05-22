@@ -3,7 +3,7 @@ import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, To
 import ErrorMessage from '../../components/ErrorMessage';
 import FormInput from '../../components/FormInput';
 import LoadingIndicator from '../../components/LoadingIndicator';
-import { colors } from '../../constants/colors';
+import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
 import { signIn } from '../../lib/auth';
 

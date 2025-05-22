@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { colors } from '../../constants/colors';
+import { colors } from '../../constants/Colors';
 import Header from '../../components/Header';
 
 export default function DashboardLayout() {

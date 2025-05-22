@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import FormInput from '../../../components/FormInput';
 import LoadingIndicator from '../../../components/LoadingIndicator';
-import { colors } from '../../../constants/colors';
+import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { getDriverInfo } from '../../../lib/auth';
 import { useFuelPrice } from '../../../lib/hooks';
@@ -23,6 +23,7 @@ import { validateFuelRecordForm } from '../../../utils/validators';
 import { supabase } from '../../../lib/supabase';
 
 export default function AddFuelScreen() {
+  const router = useRouter(); // Make sure router is properly initialized
   const [driver, setDriver] = useState<DriverInfo | null>(null);
   const [vehicle, setVehicle] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -136,8 +137,14 @@ export default function AddFuelScreen() {
       
       Alert.alert(
         'Success',
-        'Fuel record added successfully',
-        [{ text: 'OK', onPress: () => router.back() }]
+        'Fuel Record has been Logged',
+        [{ 
+          text: 'OK', 
+          onPress: () => {
+            // Navigate to fuel records screen instead of using back
+            router.replace('/(dashboard)/fuel');
+          } 
+        }]
       );
     } catch (error) {
       console.error('Error submitting fuel record:', error);
@@ -185,7 +192,7 @@ export default function AddFuelScreen() {
           <Text style={styles.vehicleCardTitle}>Selected Vehicle</Text>
           <Text style={styles.vehicleLicensePlate}>{vehicle.license_plate}</Text>
           <Text style={styles.vehicleDetails}>
-            {vehicle.brand} {vehicle.model} • {vehicle.fuel_type}
+            {vehicle.fuel_type}
           </Text>
         </View>
         

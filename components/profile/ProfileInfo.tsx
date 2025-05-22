@@ -1,8 +1,6 @@
-import { Ionicons } from '@expo/vector-icons';
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors } from '../../constants/colors';
+import { StyleSheet, Text, View } from 'react-native';
+import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
-import { signOut } from '../../lib/auth';
 import { DriverInfo } from '../../utils/types';
 
 type ProfileInfoProps = {
@@ -17,23 +15,6 @@ export default function ProfileInfo({ driver }: ProfileInfoProps) {
       case 'truck-driver': return 'Truck Driver';
       default: return 'Driver';
     }
-  };
-
-  const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Logout', 
-          style: 'destructive',
-          onPress: async () => {
-            await signOut();
-          }
-        },
-      ]
-    );
   };
 
   return (
@@ -76,13 +57,6 @@ export default function ProfileInfo({ driver }: ProfileInfoProps) {
             </Text>
           </View>
         </View>
-      </View>
-
-      <View style={styles.actionsSection}>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={20} color={colors.error} />
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
       </View>
     </>
   );
@@ -138,23 +112,6 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 12,
-    fontWeight: '500',
-  },
-  actionsSection: {
-    marginTop: layouts.spacing.xl,
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    padding: layouts.spacing.md,
-    borderRadius: layouts.borderRadius.md,
-    gap: layouts.spacing.sm,
-  },
-  logoutText: {
-    color: colors.error,
-    fontSize: 16,
     fontWeight: '500',
   },
 });

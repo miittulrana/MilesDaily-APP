@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors } from '../constants/colors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { colors } from '../constants/Colors';
 import { layouts } from '../constants/layouts';
 import { signOut } from '../lib/auth';
 
@@ -13,6 +14,7 @@ type HeaderProps = {
 
 export default function Header({ title, back, options }: HeaderProps) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const handleBack = () => {
     if (back) {
@@ -42,40 +44,45 @@ export default function Header({ title, back, options }: HeaderProps) {
     );
   };
 
+  // Adjust the container style to account for safe area insets
+  const containerStyle = {
+    ...styles.header,
+    paddingTop: Math.max(insets.top, 10), // Ensure minimum padding of 10
+    height: 60 + insets.top, // Adjust height based on safe area
+  };
+
   return (
-    <View style={styles.header}>
-      {back ? (
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Ionicons name="chevron-back" size={24} color={colors.text} />
+    <View style={containerStyle}>
+      <View style={styles.headerContent}>
+        {back ? (
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+            <Ionicons name="chevron-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.logoContainer}>
+            <Image 
+              source={require('../assets/logo.png')} 
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
+        )}
+        
+        <Text style={styles.title}>
+          {title || options?.title || ''}
+        </Text>
+        
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Ionicons name="log-out-outline" size={24} color={colors.primary} />
         </TouchableOpacity>
-      ) : (
-        <View style={styles.logoContainer}>
-          <Image 
-            source={require('../assets/logo.png')} 
-            style={styles.logo}
-            resizeMode="contain"
-          />
-        </View>
-      )}
-      
-      <Text style={styles.title}>
-        {title || options?.title || ''}
-      </Text>
-      
-      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <Ionicons name="log-out-outline" size={24} color={colors.primary} />
-      </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
-    height: 70,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: layouts.spacing.lg,
+    width: '100%',
     backgroundColor: colors.background,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray200,
@@ -84,6 +91,14 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
+    zIndex: 10,
+  },
+  headerContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: layouts.spacing.lg,
   },
   backButton: {
     padding: 8,
@@ -91,13 +106,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray100,
   },
   logoContainer: {
-    height: 50,
+    height: 40,
     width: 120,
     justifyContent: 'center',
     alignItems: 'flex-start',
   },
   logo: {
-    height: 40,
+    height: 30,
     width: 100,
   },
   title: {

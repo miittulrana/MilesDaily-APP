@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import LoadingIndicator from '../../../components/LoadingIndicator';
 import ProfileInfo from '../../../components/profile/ProfileInfo';
-import { colors } from '../../../constants/colors';
+import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { getDriverInfo } from '../../../lib/auth';
 import { DriverInfo } from '../../../utils/types';

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { config } from '../constants/config';
+import { config } from '../constants/Config';
 import { supabase } from './supabase';
 
 export type AuthError = {
