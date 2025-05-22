@@ -1,5 +1,3 @@
-// Update your lib/auth.ts file to use AsyncStorage instead of SecureStore
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { config } from '../constants/config';
 import { supabase } from './supabase';

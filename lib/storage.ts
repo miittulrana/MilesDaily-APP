@@ -1,5 +1,3 @@
-// Update your lib/storage.ts file to use AsyncStorage
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const saveSecure = async (key: string, value: string): Promise<void> => {

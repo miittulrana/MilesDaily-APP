@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "Fleet by MilesXP",
-    "slug": "fleet_by_milesxp_app",
+    "name": "MilesXP Daily",
+    "slug": "milesxp-daily",
+    "owner": "miittulrana55",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,26 +17,32 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.milesxp.fleet"
+      "bundleIdentifier": "com.milesxp.daily"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.milesxp.fleet"
+      "package": "com.milesxp.daily",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-router"],
-    "scheme": "fleet-by-milesxp",
+    "plugins": [
+      "expo-router"
+    ],
+    "scheme": "milesxp-daily",
     "extra": {
       "router": {
         "origin": false
       },
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "3ea31db3-72cd-4096-a07a-cde10dc6466a"
       }
     }
   }

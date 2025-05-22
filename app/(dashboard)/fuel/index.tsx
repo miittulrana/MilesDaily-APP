@@ -1,26 +1,58 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import ErrorMessage from '../../../../components/ErrorMessage';
-import LoadingIndicator from '../../../../components/LoadingIndicator';
-import { colors } from '../../../../constants/colors';
-import { layouts } from '../../../../constants/layouts';
-import { getDriverInfo } from '../../../../lib/auth';
-import { useAssignedVehicle, useFuelRecords } from '../hooks';
-import { DriverInfo } from '../types';
-import FuelRecordCard from '../components/FuelRecordCard';
+import ErrorMessage from '../../../components/ErrorMessage';
+import FuelRecordCard from '../../../components/fuel/FuelRecordCard';
+import LoadingIndicator from '../../../components/LoadingIndicator';
+import { colors } from '../../../constants/colors';
+import { layouts } from '../../../constants/layouts';
+import { getDriverInfo } from '../../../lib/auth';
+import { getAllFuelRecords } from '../../../lib/fuelService';
+import { DriverInfo, FuelRecord } from '../../../utils/types';
+import { supabase } from '../../../lib/supabase';
 
-export default function FuelHistoryScreen() {
+export default function FuelRecordsScreen() {
   const router = useRouter();
   const [driver, setDriver] = useState<DriverInfo | null>(null);
+  const [vehicle, setVehicle] = useState<any | null>(null);
+  const [records, setRecords] = useState<FuelRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [recordsLoading, setRecordsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadDriver = async () => {
       try {
+        setLoading(true);
         const driverData = await getDriverInfo();
         setDriver(driverData);
+        
+        if (driverData?.id) {
+          try {
+            const vehicleResponse = await fetch(`https://fleet.milesxp.com/api/drivers/${driverData.id}/vehicle`);
+            if (vehicleResponse.ok) {
+              const vehicleData = await vehicleResponse.json();
+              if (vehicleData) {
+                setVehicle(vehicleData);
+              }
+            } else {
+              throw new Error('Web API vehicle fetch failed');
+            }
+          } catch (apiError) {
+            console.error('Error fetching from API, falling back to local DB:', apiError);
+            const { data: localVehicle } = await supabase
+              .from('vehicles')
+              .select('*')
+              .eq('driver_id', driverData.id)
+              .eq('status', 'assigned')
+              .single();
+              
+            if (localVehicle) {
+              setVehicle(localVehicle);
+            }
+          }
+        }
       } catch (error) {
         console.error('Error loading driver info:', error);
       } finally {
@@ -30,32 +62,37 @@ export default function FuelHistoryScreen() {
 
     loadDriver();
   }, []);
-
-  const { vehicle, loading: vehicleLoading } = useAssignedVehicle(driver?.id || '');
-  const { records, loading: recordsLoading, error, refetch } = useFuelRecords(driver?.id || '');
-
-  useEffect(() => {
-    // Refresh records when the screen comes into focus
-    const unsubscribe = router.addListener('focus', () => {
-      if (driver?.id) {
-        refetch();
+  
+  const fetchRecords = useCallback(async () => {
+    if (driver?.id && vehicle?.id) {
+      try {
+        setRecordsLoading(true);
+        setError(null);
+        
+        const data = await getAllFuelRecords(driver.id, vehicle.id);
+        setRecords(data);
+      } catch (err) {
+        setError('Failed to load fuel records');
+        console.error('Error fetching fuel records:', err);
+      } finally {
+        setRecordsLoading(false);
       }
-    });
+    }
+  }, [driver, vehicle]);
 
-    return () => {
-      unsubscribe();
-    };
-  }, [driver, refetch, router]);
+  useFocusEffect(
+    useCallback(() => {
+      if (driver?.id && vehicle?.id) {
+        fetchRecords();
+      }
+    }, [driver, vehicle, fetchRecords])
+  );
 
   const handleAddFuel = () => {
-    router.push('/(app)/fuel/screens/add');
-  };
-  
-  const handleShowStats = () => {
-    router.push('/(app)/fuel/screens/stats');
+    router.push('/(dashboard)/fuel/add');
   };
 
-  if (loading || vehicleLoading) {
+  if (loading) {
     return <LoadingIndicator fullScreen message="Loading..." />;
   }
 
@@ -84,16 +121,10 @@ export default function FuelHistoryScreen() {
             {vehicle.license_plate} • {vehicle.brand} {vehicle.model}
           </Text>
         </View>
-        <View style={styles.headerButtons}>
-          <TouchableOpacity style={styles.statsButton} onPress={handleShowStats}>
-            <Ionicons name="bar-chart" size={18} color={colors.primary} />
-            <Text style={styles.statsButtonText}>Stats</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.addButton} onPress={handleAddFuel}>
-            <Ionicons name="add" size={20} color={colors.background} />
-            <Text style={styles.addButtonText}>Add Fuel</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={styles.addButton} onPress={handleAddFuel}>
+          <Ionicons name="add" size={20} color={colors.background} />
+          <Text style={styles.addButtonText}>Add Fuel</Text>
+        </TouchableOpacity>
       </View>
 
       {recordsLoading ? (
@@ -117,7 +148,12 @@ export default function FuelHistoryScreen() {
             <FlatList
               data={records}
               keyExtractor={(item) => item.id}
-              renderItem={({ item }) => <FuelRecordCard record={item} />}
+              renderItem={({ item }) => (
+                <FuelRecordCard 
+                  record={item} 
+                  showManualTag={true}
+                />
+              )}
               contentContainerStyle={styles.listContent}
               showsVerticalScrollIndicator={false}
             />
@@ -166,27 +202,6 @@ const styles = StyleSheet.create({
   vehicleText: {
     fontSize: 14,
     color: colors.text,
-  },
-  headerButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: layouts.spacing.sm,
-  },
-  statsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.gray100,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: layouts.borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.gray200,
-  },
-  statsButtonText: {
-    color: colors.primary,
-    fontSize: 14,
-    fontWeight: '500',
-    marginLeft: layouts.spacing.xs,
   },
   addButton: {
     flexDirection: 'row',

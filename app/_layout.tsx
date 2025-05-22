@@ -11,7 +11,6 @@ export default function RootLayout() {
   const segments = useSegments();
 
   useEffect(() => {
-    // Check if the user is authenticated
     const checkAuthState = async () => {
       try {
         const { data, error } = await supabase.auth.getSession();
@@ -26,7 +25,6 @@ export default function RootLayout() {
 
     checkAuthState();
 
-    // Subscribe to auth state changes
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       setIsSignedIn(!!session);
     });
@@ -36,21 +34,21 @@ export default function RootLayout() {
     };
   }, []);
 
-  // Handle routing based on auth state
   useEffect(() => {
     if (isLoading) return;
 
     const inAuthGroup = segments[0] === '(auth)';
+    const inDashboardGroup = segments[0] === '(dashboard)';
     
     if (!isSignedIn && !inAuthGroup) {
       router.replace('/(auth)/login');
     } else if (isSignedIn && inAuthGroup) {
-      router.replace('/(app)');
+      router.replace('/(dashboard)');
     }
   }, [isSignedIn, isLoading, segments, router]);
 
   if (isLoading) {
-    return null; // Or a loading screen
+    return null;
   }
 
   return (

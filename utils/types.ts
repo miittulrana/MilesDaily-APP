@@ -47,8 +47,6 @@ export type FuelFormData = {
   vehicle_id: string;
   amount_euros: number;
   current_km: number;
-  notes?: string;
-  location?: string;
 };
 
 export type FuelStats = {

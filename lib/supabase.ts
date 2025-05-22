@@ -5,7 +5,6 @@ import { config } from '../constants/config';
 const supabaseUrl = config.api.supabaseUrl;
 const supabaseAnonKey = config.api.supabaseAnonKey;
 
-// Using AsyncStorage instead of SecureStore to avoid compatibility issues
 const AsyncStorageAdapter = {
   getItem: async (key: string) => {
     return await AsyncStorage.getItem(key);

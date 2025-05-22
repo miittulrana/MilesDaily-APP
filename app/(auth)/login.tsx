@@ -1,13 +1,5 @@
 import { useState } from 'react';
-import {
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
-} from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import ErrorMessage from '../../components/ErrorMessage';
 import FormInput from '../../components/FormInput';
 import LoadingIndicator from '../../components/LoadingIndicator';
@@ -55,9 +47,11 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.logoContainer}>
-          <Text style={styles.logoText}>
-            MilesXP<Text style={styles.logoAccent}>Daily</Text>
-          </Text>
+          <Image 
+            source={require('../../assets/logo.png')} 
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={styles.subtitle}>Driver App</Text>
         </View>
 
@@ -119,13 +113,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: layouts.spacing.xxl,
   },
-  logoText: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  logoAccent: {
-    color: colors.text,
+  logo: {
+    width: 200,
+    height: 80,
+    marginBottom: layouts.spacing.md,
   },
   subtitle: {
     fontSize: 18,
