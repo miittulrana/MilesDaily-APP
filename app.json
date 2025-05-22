@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "MilesXP Daily",
-    "slug": "milesxp-daily",
+    "name": "Fleet by MilesXP",
+    "slug": "fleet_by_milesxp_app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,44 +16,24 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "infoPlist": {
-        "UIBackgroundModes": [
-          "location",
-          "fetch"
-        ],
-        "NSLocationWhenInUseUsageDescription": "MilesXP Daily needs access to your location to track your journey.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "MilesXP Daily needs access to your location even when the app is in the background to continue tracking your journey.",
-        "NSLocationAlwaysUsageDescription": "MilesXP Daily needs access to your location even when the app is closed to continue tracking your journey."
-      },
-      "bundleIdentifier": "com.milesxp.daily"
+      "bundleIdentifier": "com.milesxp.fleet"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "permissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "FOREGROUND_SERVICE"
-      ],
-      "package": "com.milesxp.daily"
+      "package": "com.milesxp.fleet"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "MilesXP Daily needs access to your location even when the app is in the background to continue tracking your journey.",
-          "locationAlwaysPermission": "MilesXP Daily needs access to your location even when the app is closed to continue tracking your journey.",
-          "locationWhenInUsePermission": "MilesXP Daily needs access to your location to track your journey."
-        }
-      ]
-    ],
+    "plugins": ["expo-router"],
+    "scheme": "fleet-by-milesxp",
     "extra": {
+      "router": {
+        "origin": false
+      },
       "eas": {
         "projectId": "your-project-id"
       }

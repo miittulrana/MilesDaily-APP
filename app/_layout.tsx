@@ -1,30 +1,62 @@
-import '../polyfills';
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Redirect, Stack } from 'expo-router';
-import { useAuth } from '../hooks/useAuth';
-import LoadingSpinner from '../components/common/LoadingSpinner';
+import { Slot, useRouter, useSegments } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect, useState } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { supabase } from '../lib/supabase';
 
 export default function RootLayout() {
-  const { session, loading } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSignedIn, setIsSignedIn] = useState(false);
+  const router = useRouter();
+  const segments = useSegments();
 
-  if (loading) {
-    return <LoadingSpinner fullScreen message="Loading..." />;
-  }
+  useEffect(() => {
+    // Check if the user is authenticated
+    const checkAuthState = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        setIsSignedIn(!!data.session);
+      } catch (err) {
+        console.error('Error checking auth state:', err);
+        setIsSignedIn(false);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  if (session) {
-    return <Redirect href="/(auth)/tracking" />;
+    checkAuthState();
+
+    // Subscribe to auth state changes
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      setIsSignedIn(!!session);
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  // Handle routing based on auth state
+  useEffect(() => {
+    if (isLoading) return;
+
+    const inAuthGroup = segments[0] === '(auth)';
+    
+    if (!isSignedIn && !inAuthGroup) {
+      router.replace('/(auth)/login');
+    } else if (isSignedIn && inAuthGroup) {
+      router.replace('/(app)');
+    }
+  }, [isSignedIn, isLoading, segments, router]);
+
+  if (isLoading) {
+    return null; // Or a loading screen
   }
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: 'white' },
-      }}
-    >
-      <Stack.Screen name="index" options={{ title: 'MilesXP Daily' }} />
-      <Stack.Screen name="login" options={{ title: 'Login' }} />
-    </Stack>
+    <SafeAreaProvider>
+      <StatusBar style="dark" />
+      <Slot />
+    </SafeAreaProvider>
   );
 }
