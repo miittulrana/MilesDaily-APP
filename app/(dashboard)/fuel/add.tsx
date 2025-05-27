@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import FormInput from '../../../components/FormInput';
 import LoadingIndicator from '../../../components/LoadingIndicator';
-import { colors } from '../../../constants/colors';
+import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { getDriverInfo } from '../../../lib/auth';
 import { useFuelPrice } from '../../../lib/hooks';
@@ -23,6 +23,7 @@ import { validateFuelRecordForm } from '../../../utils/validators';
 import { supabase } from '../../../lib/supabase';
 
 export default function AddFuelScreen() {
+  const router = useRouter();
   const [driver, setDriver] = useState<DriverInfo | null>(null);
   const [vehicle, setVehicle] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,59 +94,85 @@ export default function AddFuelScreen() {
     }
   };
 
-  const handleSubmit = async () => {
-    const validation = validateFuelRecordForm(formData);
+const handleSubmit = async () => {
+  const validation = validateFuelRecordForm(formData);
+  
+  if (!validation.valid) {
+    setErrors(validation.errors);
+    return;
+  }
+  
+  if (!driver?.id) {
+    Alert.alert('Error', 'Driver information not available');
+    return;
+  }
+  
+  if (!vehicle?.id) {
+    Alert.alert('Error', 'No vehicle assigned to your account');
+    return;
+  }
+  
+  if (!price) {
+    Alert.alert('Error', 'Could not determine fuel price');
+    return;
+  }
+  
+  try {
+    setSubmitting(true);
     
-    if (!validation.valid) {
-      setErrors(validation.errors);
+    const result = await createFuelRecord(
+      {
+        vehicle_id: vehicle.id,
+        amount_euros: parseFloatSafe(formData.amount_euros),
+        current_km: parseFloatSafe(formData.current_km),
+      },
+      driver.id,
+      price
+    );
+    
+    if (!result.success) {
+      Alert.alert('Error', result.error || 'Failed to save fuel record');
+      setSubmitting(false);
       return;
     }
     
-    if (!driver?.id) {
-      Alert.alert('Error', 'Driver information not available');
-      return;
-    }
+    // Don't wait for alert, navigate immediately
+    setSubmitting(false);
     
-    if (!vehicle?.id) {
-      Alert.alert('Error', 'No vehicle assigned to your account');
-      return;
-    }
-    
-    if (!price) {
-      Alert.alert('Error', 'Could not determine fuel price');
-      return;
-    }
-    
+    // Try different navigation approaches in sequence
     try {
-      setSubmitting(true);
+      // Method 1: Direct replacement
+      router.replace('/(dashboard)/fuel');
       
-      const result = await createFuelRecord(
-        {
-          vehicle_id: vehicle.id,
-          amount_euros: parseFloatSafe(formData.amount_euros),
-          current_km: parseFloatSafe(formData.current_km),
-        },
-        driver.id,
-        price
-      );
-      
-      if (!result.success) {
-        Alert.alert('Error', result.error || 'Failed to save fuel record');
-        return;
-      }
-      
+      // If we're still here after a moment, try method 2
+      setTimeout(() => {
+        try {
+          router.navigate('/(dashboard)/fuel');
+        } catch (navError) {
+          console.error('Navigation error:', navError);
+          // Last resort - use Alert
+          Alert.alert(
+            'Success',
+            'Fuel record added successfully. Please go back to view records.',
+            [{ text: 'OK' }]
+          );
+        }
+      }, 300);
+    } catch (navError) {
+      console.error('Initial navigation error:', navError);
+      // Fallback
       Alert.alert(
         'Success',
-        'Fuel record added successfully',
-        [{ text: 'OK', onPress: () => router.back() }]
+        'Fuel record added successfully. Please go back to view records.',
+        [{ text: 'OK' }]
       );
-    } catch (error) {
-      console.error('Error submitting fuel record:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
-    } finally {
-      setSubmitting(false);
     }
-  };
+  } catch (error) {
+    console.error('Error submitting fuel record:', error);
+    Alert.alert('Error', 'An unexpected error occurred');
+    setSubmitting(false);
+  }
+};
 
   const handleCancel = () => {
     router.back();

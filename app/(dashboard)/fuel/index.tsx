@@ -5,7 +5,7 @@ import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 import ErrorMessage from '../../../components/ErrorMessage';
 import FuelRecordCard from '../../../components/fuel/FuelRecordCard';
 import LoadingIndicator from '../../../components/LoadingIndicator';
-import { colors } from '../../../constants/colors';
+import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { getDriverInfo } from '../../../lib/auth';
 import { getAllFuelRecords } from '../../../lib/fuelService';

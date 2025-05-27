@@ -17,7 +17,12 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.milesxp.daily"
+      "bundleIdentifier": "com.milesxp.daily",
+      "infoPlist": {
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs location access to track work routes and ensure driver safety.",
+        "NSLocationWhenInUseUsageDescription": "This app needs location access to track work routes and ensure driver safety.",
+        "UIBackgroundModes": ["location", "background-fetch", "background-processing"]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,14 +32,30 @@
       "package": "com.milesxp.daily",
       "permissions": [
         "INTERNET",
-        "ACCESS_NETWORK_STATE"
+        "ACCESS_NETWORK_STATE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "This app needs location access to track work routes and ensure driver safety.",
+          "locationWhenInUsePermission": "This app needs location access to track work routes and ensure driver safety.",
+          "locationAlwaysPermission": "This app needs location access to track work routes and ensure driver safety.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ]
     ],
     "scheme": "milesxp-daily",
     "extra": {

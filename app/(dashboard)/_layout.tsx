@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { colors } from '../../constants/colors';
+import { colors } from '../../constants/Colors';
 import Header from '../../components/Header';
 
 export default function DashboardLayout() {
@@ -22,24 +22,21 @@ export default function DashboardLayout() {
       <Stack.Screen
         name="index"
         options={{
+          headerShown: true,
           title: 'Dashboard',
-        }}
-      />
-      <Stack.Screen
-        name="profile/index"
-        options={{
-          title: 'Profile',
         }}
       />
       <Stack.Screen
         name="fuel/index"
         options={{
+          headerShown: true,
           title: 'Fuel Records',
         }}
       />
       <Stack.Screen
         name="fuel/add"
         options={{
+          headerShown: true,
           title: 'Add Fuel Record',
           presentation: 'modal',
         }}

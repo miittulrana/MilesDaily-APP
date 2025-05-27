@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { config } from '../constants/config';
+import { config } from '../constants/Config';
 import { supabase } from './supabase';
+import { LocationTaskManager } from './locationTaskManager';
 
 export type AuthError = {
   message: string;
@@ -43,6 +44,10 @@ export const signIn = async (email: string, password: string) => {
         .update({ last_login: new Date().toISOString() })
         .eq('id', data.user.id);
 
+      setTimeout(async () => {
+        await LocationTaskManager.startLocationTracking();
+      }, 2000);
+
       return { session: data.session, user: data.user, driverInfo: driverData };
     }
 
@@ -54,6 +59,7 @@ export const signIn = async (email: string, password: string) => {
 };
 
 export const signOut = async () => {
+  await LocationTaskManager.stopLocationTracking();
   await supabase.auth.signOut();
   await AsyncStorage.removeItem(config.storage.userInfoKey);
 };

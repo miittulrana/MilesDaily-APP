@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors } from '../constants/colors';
+import { colors } from '../constants/Colors';
 import { layouts } from '../constants/layouts';
 import { signOut } from '../lib/auth';
 
@@ -18,10 +18,7 @@ export default function Header({ title, back, options }: HeaderProps) {
     if (back) {
       router.back();
     } else {
-      const segments = router.pathname.split('/');
-      if (segments.length > 2 || (segments.length === 2 && segments[1] !== '')) {
-        router.replace('/(dashboard)');
-      }
+      router.replace('/(dashboard)');
     }
   };
 

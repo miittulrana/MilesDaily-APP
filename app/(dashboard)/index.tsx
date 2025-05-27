@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import LoadingIndicator from '../../components/LoadingIndicator';
 import ModuleCard from '../../components/ModuleCard';
-import { colors } from '../../constants/colors';
+import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
 import { getAssignedVehicle, getDriverInfo } from '../../lib/auth';
 import { DriverInfo } from '../../utils/types';

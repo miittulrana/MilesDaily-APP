@@ -130,7 +130,8 @@ export const createFuelRecord = async (
           amount_euros: formData.amount_euros,
           current_km: formData.current_km,
           is_manual_entry: false
-        })
+        }),
+        timeout: 10000
       });
       
       if (response.ok) {
@@ -204,7 +205,6 @@ export const fetchVehicleStats = async (vehicleId: string): Promise<FuelStats | 
   } catch (error) {
     console.error('Error fetching vehicle stats from web API:', error);
     
-    // Fallback to local database
     try {
       const { data, error: dbError } = await supabase
         .from('vehicle_fuel_stats')
