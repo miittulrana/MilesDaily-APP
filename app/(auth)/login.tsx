@@ -6,6 +6,7 @@ import LoadingIndicator from '../../components/LoadingIndicator';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
 import { signIn } from '../../lib/auth';
+import { LocationTaskManager } from '../../lib/locationTaskManager';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -27,6 +28,10 @@ export default function LoginScreen() {
 
       if (result.error) {
         setError(result.error.message);
+      } else {
+        setTimeout(async () => {
+          await LocationTaskManager.startLocationTracking();
+        }, 1500);
       }
     } catch (err) {
       setError('An unexpected error occurred');
