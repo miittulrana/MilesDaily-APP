@@ -21,6 +21,9 @@
       "infoPlist": {
         "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs location access to track work routes and ensure driver safety.",
         "NSLocationWhenInUseUsageDescription": "This app needs location access to track work routes and ensure driver safety.",
+        "NSCameraUsageDescription": "This app needs camera access to take photos of completed vehicle washes.",
+        "NSMicrophoneUsageDescription": "This app needs microphone access for camera functionality.",
+        "NSPhotoLibraryUsageDescription": "This app needs photo library access to select wash completion photos.",
         "UIBackgroundModes": ["location", "background-fetch", "background-processing"]
       }
     },
@@ -37,7 +40,13 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION"
+        "FOREGROUND_SERVICE_LOCATION",
+        "CAMERA",
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
       ]
     },
     "web": {
@@ -54,6 +63,31 @@
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "This app needs camera access to take photos of completed vehicle washes.",
+          "microphonePermission": "This app needs microphone access for camera functionality.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This app needs photo library access to select wash completion photos.",
+          "cameraPermission": "This app needs camera access to take photos of completed vehicle washes."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ff6b00",
+          "sounds": [
+            "./assets/notification-sound.wav"
+          ]
         }
       ]
     ],

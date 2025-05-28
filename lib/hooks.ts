@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getAssignedVehicle, getCurrentFuelPrice } from './fuelService';
-import { Vehicle } from '../utils/types';
+import { fetchDriverWashSchedules } from './washService';
+import { Vehicle, WashSchedule } from '../utils/types';
 
 export const useAssignedVehicle = (driverId: string) => {
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
@@ -56,4 +57,32 @@ export const useFuelPrice = (fuelType: string) => {
   }, [fetchPrice]);
 
   return { price, loading, error, refetch: fetchPrice };
+};
+
+export const useWashSchedules = (driverId: string, vehicleId: string, date: string) => {
+  const [schedules, setSchedules] = useState<WashSchedule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchSchedules = useCallback(async () => {
+    if (!driverId || !vehicleId || !date) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await fetchDriverWashSchedules(driverId, vehicleId, date);
+      setSchedules(data);
+    } catch (err) {
+      setError('Failed to load wash schedules');
+      console.error('Error in useWashSchedules:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [driverId, vehicleId, date]);
+
+  useEffect(() => {
+    fetchSchedules();
+  }, [fetchSchedules]);
+
+  return { schedules, loading, error, refetch: fetchSchedules };
 };

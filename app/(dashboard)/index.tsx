@@ -56,6 +56,8 @@ export default function DashboardScreen() {
       router.push('/(dashboard)/profile');
     } else if (module === 'fuel') {
       router.push('/(dashboard)/fuel');
+    } else if (module === 'wash') {
+      router.push('/(dashboard)/wash');
     }
   };
 
@@ -65,7 +67,6 @@ export default function DashboardScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Welcome & Vehicle Section */}
       <View style={styles.topSection}>
         <View style={styles.welcomeSection}>
           <Text style={styles.welcomeText}>Welcome back,</Text>
@@ -86,13 +87,18 @@ export default function DashboardScreen() {
         )}
       </View>
 
-      {/* Fuel Module */}
       <View style={styles.moduleContainer}>
         <ModuleCard
           title="Fuel"
           description="Record and track fuel expenses"
           iconName="water"
           onPress={() => navigateToModule('fuel')}
+        />
+        <ModuleCard
+          title="Wash"
+          description="Complete vehicle wash schedules"
+          iconName="car"
+          onPress={() => navigateToModule('wash')}
         />
       </View>
     </ScrollView>

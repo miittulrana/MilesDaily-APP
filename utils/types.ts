@@ -67,3 +67,50 @@ export type DriverInfo = {
   is_active: boolean;
   last_login?: string;
 };
+
+export type WashSchedule = {
+  id: string;
+  vehicle_id: string;
+  driver_id: string | null;
+  scheduled_date: string;
+  status: 'pending' | 'completed';
+  completed_at: string | null;
+  completed_by_type: 'driver' | 'admin' | null;
+  completed_by_user_id: string | null;
+  image_url: string | null;
+  admin_reason: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  vehicle?: {
+    id: string;
+    license_plate: string;
+    brand: string;
+    model: string;
+    type: string;
+    driver?: {
+      id: string;
+      first_name: string | null;
+      last_name: string | null;
+      email: string;
+    } | null;
+  };
+  completed_by_user?: {
+    id: string;
+    name: string | null;
+    email: string;
+  } | null;
+};
+
+export type WashCompletionData = {
+  schedule_id: string;
+  image_uri: string;
+  notes?: string;
+};
+
+export type OfflineWashCompletion = {
+  schedule_id: string;
+  image_uri: string;
+  notes?: string;
+  timestamp: string;
+};
