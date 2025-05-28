@@ -17,26 +17,24 @@ export default function DashboardLayout() {
           backgroundColor: colors.background,
         },
         header: (props) => <Header {...props} />,
+        headerShown: true,
       }}
     >
       <Stack.Screen
         name="index"
         options={{
-          headerShown: true,
           title: 'Dashboard',
         }}
       />
       <Stack.Screen
         name="fuel/index"
         options={{
-          headerShown: true,
           title: 'Fuel Records',
         }}
       />
       <Stack.Screen
         name="fuel/add"
         options={{
-          headerShown: true,
           title: 'Add Fuel Record',
           presentation: 'modal',
         }}

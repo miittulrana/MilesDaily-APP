@@ -12,9 +12,9 @@ type ModuleCardProps = {
 
 export default function ModuleCard({ title, description, iconName, onPress }: ModuleCardProps) {
   return (
-    <TouchableOpacity style={styles.moduleCard} onPress={onPress}>
+    <TouchableOpacity style={styles.moduleCard} onPress={onPress} activeOpacity={0.8}>
       <View style={styles.moduleIconContainer}>
-        <Ionicons name={iconName} size={24} color={colors.primary} />
+        <Ionicons name={iconName} size={28} color={colors.primary} />
       </View>
       <Text style={styles.moduleTitle}>{title}</Text>
       <Text style={styles.moduleDescription}>{description}</Text>
@@ -26,36 +26,39 @@ const styles = StyleSheet.create({
   moduleCard: {
     backgroundColor: colors.card,
     borderRadius: layouts.borderRadius.lg,
-    padding: layouts.spacing.lg,
+    padding: layouts.spacing.xl,
     borderWidth: 1,
     borderColor: colors.gray200,
     shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-    width: '100%',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
     alignItems: 'center',
-    marginBottom: layouts.spacing.md,
+    minHeight: 160,
+    justifyContent: 'center',
+    width: '80%',
   },
   moduleIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: layouts.borderRadius.md,
-    backgroundColor: colors.gray100,
+    width: 56,
+    height: 56,
+    borderRadius: layouts.borderRadius.lg,
+    backgroundColor: colors.primary + '15',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: layouts.spacing.md,
   },
   moduleTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: layouts.spacing.xs,
+    textAlign: 'center',
   },
   moduleDescription: {
-    fontSize: 14,
+    fontSize: 12,
     color: colors.textLight,
     textAlign: 'center',
+    lineHeight: 16,
   },
 });

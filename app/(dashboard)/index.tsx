@@ -65,50 +65,35 @@ export default function DashboardScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.welcomeText}>Welcome back,</Text>
-        <Text style={styles.driverName}>{getDriverName()}</Text>
-        {driver?.role && (
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleBadgeText}>{getRoleLabel(driver.role)}</Text>
+      {/* Welcome & Vehicle Section */}
+      <View style={styles.topSection}>
+        <View style={styles.welcomeSection}>
+          <Text style={styles.welcomeText}>Welcome back,</Text>
+          <Text style={styles.driverName}>{getDriverName()}</Text>
+          {driver?.role && (
+            <View style={styles.roleBadge}>
+              <Text style={styles.roleBadgeText}>{getRoleLabel(driver.role)}</Text>
+            </View>
+          )}
+        </View>
+
+        {vehicle && (
+          <View style={styles.vehicleSection}>
+            <Text style={styles.vehicleSectionTitle}>Assigned Vehicle</Text>
+            <Text style={styles.vehicleLicensePlate}>{vehicle.license_plate}</Text>
+            <Text style={styles.vehicleModel}>{vehicle.brand} {vehicle.model}</Text>
           </View>
         )}
       </View>
 
-      {vehicle ? (
-        <View style={styles.vehicleCard}>
-          <View style={styles.vehicleCardHeader}>
-            <Text style={styles.vehicleCardTitle}>Assigned Vehicle</Text>
-          </View>
-          <View style={styles.vehicleInfo}>
-            <Text style={styles.vehicleLicensePlate}>{vehicle.license_plate}</Text>
-            <Text style={styles.vehicleModel}>{vehicle.brand} {vehicle.model}</Text>
-            <Text style={styles.vehicleDetail}>Type: {vehicle.type || 'N/A'}</Text>
-            <Text style={styles.vehicleDetail}>Fuel: {vehicle.fuel_type || 'N/A'}</Text>
-          </View>
-        </View>
-      ) : (
-        <View style={styles.noVehicleCard}>
-          <Text style={styles.noVehicleText}>No vehicle assigned</Text>
-        </View>
-      )}
-
-      <View style={styles.modulesSection}>
-        <Text style={styles.sectionTitle}>Modules</Text>
-        <View style={styles.modulesGrid}>
-          <ModuleCard
-            title="Fuel"
-            description="Record and track fuel expenses"
-            iconName="water"
-            onPress={() => navigateToModule('fuel')}
-          />
-          <ModuleCard
-            title="Profile"
-            description="View and manage your profile"
-            iconName="person"
-            onPress={() => navigateToModule('profile')}
-          />
-        </View>
+      {/* Fuel Module */}
+      <View style={styles.moduleContainer}>
+        <ModuleCard
+          title="Fuel"
+          description="Record and track fuel expenses"
+          iconName="water"
+          onPress={() => navigateToModule('fuel')}
+        />
       </View>
     </ScrollView>
   );
@@ -121,102 +106,65 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: layouts.spacing.lg,
+    paddingBottom: layouts.spacing.xl,
   },
-  header: {
+  topSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: layouts.spacing.xl,
+    paddingHorizontal: layouts.spacing.sm,
+  },
+  welcomeSection: {
+    flex: 1,
+    paddingRight: layouts.spacing.md,
   },
   welcomeText: {
     fontSize: 16,
     color: colors.textLight,
+    marginBottom: layouts.spacing.xs,
   },
   driverName: {
     fontSize: 24,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.text,
-    marginTop: layouts.spacing.xs,
+    marginBottom: layouts.spacing.sm,
   },
   roleBadge: {
     backgroundColor: colors.primary,
     alignSelf: 'flex-start',
-    paddingVertical: 4,
-    paddingHorizontal: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
     borderRadius: layouts.borderRadius.full,
-    marginTop: layouts.spacing.sm,
   },
   roleBadgeText: {
     color: colors.background,
     fontSize: 12,
     fontWeight: '600',
   },
-  vehicleCard: {
-    backgroundColor: colors.card,
-    borderRadius: layouts.borderRadius.lg,
-    padding: layouts.spacing.lg,
-    marginBottom: layouts.spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.gray200,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+  vehicleSection: {
+    alignItems: 'flex-end',
+    paddingLeft: layouts.spacing.md,
   },
-  vehicleCardHeader: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray200,
-    paddingBottom: layouts.spacing.sm,
-    marginBottom: layouts.spacing.md,
-  },
-  vehicleCardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  vehicleInfo: {
-    gap: layouts.spacing.sm,
+  vehicleSectionTitle: {
+    fontSize: 12,
+    color: colors.textLight,
+    fontWeight: '500',
+    marginBottom: layouts.spacing.xs,
   },
   vehicleLicensePlate: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
     color: colors.primary,
+    marginBottom: layouts.spacing.xs,
   },
   vehicleModel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: colors.text,
-  },
-  vehicleDetail: {
     fontSize: 14,
-    color: colors.textLight,
-  },
-  noVehicleCard: {
-    backgroundColor: colors.gray100,
-    borderRadius: layouts.borderRadius.lg,
-    padding: layouts.spacing.lg,
-    marginBottom: layouts.spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.gray200,
-    height: 150,
-  },
-  noVehicleText: {
-    fontSize: 16,
-    color: colors.gray500,
-    marginTop: layouts.spacing.md,
-  },
-  modulesSection: {
-    marginBottom: layouts.spacing.xl,
-  },
-  sectionTitle: {
-    fontSize: 18,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: layouts.spacing.md,
+    textAlign: 'right',
   },
-  modulesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: layouts.spacing.md,
+  moduleContainer: {
+    alignItems: 'center',
   },
 });
