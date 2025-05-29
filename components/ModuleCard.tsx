@@ -10,10 +10,47 @@ type ModuleCardProps = {
 };
 
 export default function ModuleCard({ title, iconName, onPress }: ModuleCardProps) {
+  const getIconColor = (title: string) => {
+    switch (title.toLowerCase()) {
+      case 'fuel':
+        return '#3b82f6';
+      case 'wash':
+        return '#10b981';
+      case 'documents':
+        return '#8b5cf6';
+      case 'accident':
+        return '#f59e0b';
+      default:
+        return colors.primary;
+    }
+  };
+
+  const getBackgroundColor = (title: string) => {
+    switch (title.toLowerCase()) {
+      case 'fuel':
+        return '#3b82f6' + '15';
+      case 'wash':
+        return '#10b981' + '15';
+      case 'documents':
+        return '#8b5cf6' + '15';
+      case 'accident':
+        return '#f59e0b' + '15';
+      default:
+        return colors.primary + '15';
+    }
+  };
+
   return (
     <TouchableOpacity style={styles.moduleCard} onPress={onPress} activeOpacity={0.8}>
-      <View style={styles.moduleIconContainer}>
-        <Ionicons name={iconName} size={32} color={colors.primary} />
+      <View style={[
+        styles.moduleIconContainer,
+        { backgroundColor: getBackgroundColor(title) }
+      ]}>
+        <Ionicons 
+          name={iconName} 
+          size={32} 
+          color={getIconColor(title)} 
+        />
       </View>
       <Text style={styles.moduleTitle}>{title}</Text>
     </TouchableOpacity>
@@ -41,7 +78,6 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: layouts.borderRadius.xl,
-    backgroundColor: colors.primary + '15',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: layouts.spacing.lg,

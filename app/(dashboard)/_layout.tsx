@@ -63,6 +63,53 @@ export default function DashboardLayout() {
           presentation: 'card',
         }}
       />
+      <Stack.Screen
+        name="accident/index"
+        options={{
+          headerShown: true,
+          title: 'Accident Reports',
+        }}
+      />
+      <Stack.Screen
+        name="accident/create"
+        options={{
+          headerShown: true,
+          title: 'Start New Claim',
+          presentation: 'card',
+        }}
+      />
+      <Stack.Screen
+        name="accident/type-selection"
+        options={{
+          headerShown: true,
+          title: 'Select Accident Type',
+          presentation: 'card',
+        }}
+      />
+      <Stack.Screen
+        name="accident/details"
+        options={{
+          headerShown: true,
+          title: 'Accident Details',
+          presentation: 'card',
+        }}
+      />
+      <Stack.Screen
+        name="accident/photo-upload"
+        options={{
+          headerShown: true,
+          title: 'Upload Photos',
+          presentation: 'card',
+        }}
+      />
+      <Stack.Screen
+        name="accident/review"
+        options={{
+          headerShown: true,
+          title: 'Review & Submit',
+          presentation: 'card',
+        }}
+      />
     </Stack>
   );
 }

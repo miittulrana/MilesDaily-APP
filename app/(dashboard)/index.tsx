@@ -68,17 +68,21 @@ export default function DashboardScreen() {
     }
   };
 
-  const navigateToModule = (module: string) => {
-    if (module === 'profile') {
-      router.push('/(dashboard)/profile');
-    } else if (module === 'fuel') {
-      router.push('/(dashboard)/fuel');
-    } else if (module === 'wash') {
-      router.push('/(dashboard)/wash');
-    } else if (module === 'documents') {
-      router.push('/(dashboard)/documents');
-    }
-  };
+const navigateToModule = (module: string) => {
+  console.log('Navigating to module:', module);
+  if (module === 'profile') {
+    router.push('/(dashboard)/profile');
+  } else if (module === 'fuel') {
+    router.push('/(dashboard)/fuel');
+  } else if (module === 'wash') {
+    router.push('/(dashboard)/wash');
+  } else if (module === 'documents') {
+    router.push('/(dashboard)/documents');
+  } else if (module === 'accident') {
+    console.log('Going to accident screen');
+    router.push('/(dashboard)/accident');
+  }
+};
 
   if (loading) {
     return <LoadingIndicator fullScreen message="Loading your dashboard..." />;
@@ -97,7 +101,6 @@ export default function DashboardScreen() {
         />
       }
     >
-      {/* Header Section with Welcome and Vehicle Info */}
       <View style={styles.headerRow}>
         <View style={styles.welcomeSection}>
           <Text style={styles.welcomeText}>Welcome back,</Text>
@@ -109,7 +112,6 @@ export default function DashboardScreen() {
           )}
         </View>
 
-        {/* Vehicle Info Card on Right */}
         {vehicle ? (
           <View style={styles.vehicleInfoCard}>
             <Text style={styles.vehicleNumber}>{vehicle.license_plate}</Text>
@@ -122,7 +124,6 @@ export default function DashboardScreen() {
         )}
       </View>
 
-      {/* Temp Assignment Banner */}
       {driver?.id && hasActiveAssignments && assignments.length > 0 && (
         <TempAssignmentBanner
           assignment={assignments[0]}
@@ -130,7 +131,6 @@ export default function DashboardScreen() {
         />
       )}
 
-      {/* Modules Grid - 2x2 Layout */}
       <View style={styles.modulesGrid}>
         <View style={styles.moduleRow}>
           <ModuleCard
@@ -151,7 +151,11 @@ export default function DashboardScreen() {
             iconName="document-text-outline"
             onPress={() => navigateToModule('documents')}
           />
-          <View style={styles.emptyModuleSlot} />
+          <ModuleCard
+            title="Accident"
+            iconName="warning-outline"
+            onPress={() => navigateToModule('accident')}
+          />
         </View>
       </View>
     </ScrollView>
@@ -250,8 +254,5 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: layouts.spacing.xl,
     gap: layouts.spacing.lg,
-  },
-  emptyModuleSlot: {
-    flex: 1,
   },
 });

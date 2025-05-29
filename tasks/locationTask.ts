@@ -18,7 +18,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     const { locations } = data as LocationTaskData;
     
     if (locations && locations.length > 0) {
-      const location = locations[0];
+      const currentLocation = locations[0];
       
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -27,14 +27,14 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
           return;
         }
 
-        const locationUpdate = {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          accuracy_meters: location.coords.accuracy || null,
-          altitude_meters: location.coords.altitude || null,
-          speed_kmh: location.coords.speed ? location.coords.speed * 3.6 : null,
-          heading_degrees: location.coords.heading || null,
-          recorded_at: new Date(location.timestamp).toISOString(),
+        const locationUpdatePayload = {
+          latitude: currentLocation.coords.latitude,
+          longitude: currentLocation.coords.longitude,
+          accuracy_meters: currentLocation.coords.accuracy || null,
+          altitude_meters: currentLocation.coords.altitude || null,
+          speed_kmh: currentLocation.coords.speed ? currentLocation.coords.speed * 3.6 : null,
+          heading_degrees: currentLocation.coords.heading || null,
+          recorded_at: new Date(currentLocation.timestamp).toISOString(),
           location_source: 'gps'
         };
 
@@ -44,7 +44,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session.access_token}`
           },
-          body: JSON.stringify(locationUpdate)
+          body: JSON.stringify(locationUpdatePayload)
         });
 
         if (!response.ok) {

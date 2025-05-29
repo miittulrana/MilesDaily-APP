@@ -73,7 +73,7 @@ class LocationService {
 
       await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
         accuracy: Location.Accuracy.High,
-        timeInterval: 6000,
+        timeInterval: 3000,
         distanceInterval: 0,
         foregroundService: {
           notificationTitle: 'MilesXP Daily',
