@@ -19,5 +19,8 @@ export const colors = {
   gray500: '#6b7280',
   gray600: '#4b5563',
   card: '#ffffff',
-  shadow: 'rgba(0, 0, 0, 0.1)'
+  shadow: 'rgba(0, 0, 0, 0.1)',
+  documentExpired: '#ef4444',
+  documentExpiring: '#f59e0b',
+  documentValid: '#10b981'
 };

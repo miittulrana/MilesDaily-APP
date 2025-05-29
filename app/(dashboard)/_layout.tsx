@@ -1,4 +1,3 @@
-// app/(dashboard)/_layout.tsx
 import { Stack } from 'expo-router';
 import { colors } from '../../constants/Colors';
 import Header from '../../components/Header';
@@ -47,6 +46,13 @@ export default function DashboardLayout() {
         options={{
           headerShown: true,
           title: 'Wash Schedule',
+        }}
+      />
+      <Stack.Screen
+        name="documents/index"
+        options={{
+          headerShown: true,
+          title: 'Documents',
         }}
       />
     </Stack>
