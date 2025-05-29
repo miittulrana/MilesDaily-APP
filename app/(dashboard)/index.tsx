@@ -3,9 +3,11 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import LoadingIndicator from '../../components/LoadingIndicator';
 import ModuleCard from '../../components/ModuleCard';
+import TempAssignmentBanner from '../../components/temp-assignments/TempAssignmentBanner';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
 import { getAssignedVehicle, getDriverInfo } from '../../lib/auth';
+import { useTempAssignments } from '../../lib/hooks/useTempAssignments';
 import { DriverInfo } from '../../utils/types';
 
 export default function DashboardScreen() {
@@ -13,6 +15,13 @@ export default function DashboardScreen() {
   const [driver, setDriver] = useState<DriverInfo | null>(null);
   const [vehicle, setVehicle] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  const {
+    assignments,
+    loading: assignmentsLoading,
+    refetch: refetchAssignments,
+    hasActiveAssignments,
+  } = useTempAssignments(driver?.id || '');
   
   useEffect(() => {
     const loadData = async () => {
@@ -78,6 +87,13 @@ export default function DashboardScreen() {
           </View>
         )}
       </View>
+
+      {hasActiveAssignments && assignments.length > 0 && (
+        <TempAssignmentBanner
+          assignment={assignments[0]}
+          onRefresh={refetchAssignments}
+        />
+      )}
 
       {vehicle ? (
         <View style={styles.vehicleCard}>

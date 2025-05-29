@@ -22,5 +22,9 @@ export const colors = {
   shadow: 'rgba(0, 0, 0, 0.1)',
   documentExpired: '#ef4444',
   documentExpiring: '#f59e0b',
-  documentValid: '#10b981'
+  documentValid: '#10b981',
+  tempAssignmentActive: '#3b82f6',
+  tempAssignmentActiveDark: '#1d4ed8',
+  tempAssignmentExpired: '#ef4444',
+  tempAssignmentExpiredDark: '#dc2626',
 };
