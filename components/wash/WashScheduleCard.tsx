@@ -1,238 +1,276 @@
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import ErrorMessage from '../../components/ErrorMessage';
+import LoadingIndicator from '../../components/LoadingIndicator';
+import WashScheduleCard from '../../components/wash/WashScheduleCard';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
-import { WashSchedule } from '../../utils/types';
+import { getDriverInfo, getAssignedVehicle } from '../../lib/auth';
+import { getTodaysWashSchedule, WashSchedule } from '../../lib/washService';
+import { DriverInfo, Vehicle } from '../../utils/types';
 
-type WashScheduleCardProps = {
-  schedule: WashSchedule;
-  vehicle: any;
-  onComplete: (schedule: WashSchedule) => void;
-};
+export default function WashScheduleScreen() {
+  const [driver, setDriver] = useState<DriverInfo | null>(null);
+  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [schedules, setSchedules] = useState<WashSchedule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-export default function WashScheduleCard({ schedule, vehicle, onComplete }: WashScheduleCardProps) {
-  const isCompleted = schedule.status === 'completed';
-  const scheduledDate = new Date(schedule.scheduled_date);
-  const completedDate = schedule.completed_at ? new Date(schedule.completed_at) : null;
-  const isEarlyCompletion = completedDate && completedDate < scheduledDate;
-
-  const getStatusColor = () => {
-    if (isCompleted) {
-      return isEarlyCompletion ? colors.warning : colors.success;
-    }
-    return colors.gray400;
-  };
-
-  const getStatusText = () => {
-    if (isCompleted) {
-      if (isEarlyCompletion) {
-        return `Completed Early (${completedDate?.toLocaleDateString()})`;
+  const loadDriverAndVehicle = async () => {
+    try {
+      const driverData = await getDriverInfo();
+      setDriver(driverData);
+      
+      if (driverData?.id) {
+        const vehicleData = await getAssignedVehicle(driverData.id);
+        setVehicle(vehicleData);
+        return { driver: driverData, vehicle: vehicleData };
       }
-      return 'Completed';
+    } catch (error) {
+      console.error('Error loading driver and vehicle:', error);
+      setError('Failed to load driver information');
     }
-    return 'Pending';
+    return { driver: null, vehicle: null };
   };
 
-  const getCompletionDetails = () => {
-    if (!isCompleted || !schedule.completed_at) return null;
+  const fetchSchedules = async (showLoading = true) => {
+    if (!driver?.id) return;
 
-    const completedBy = schedule.completed_by_type === 'driver' ? 'You' : 'Admin';
-    const completedTime = new Date(schedule.completed_at).toLocaleString();
+    try {
+      if (showLoading) setLoading(true);
+      setError(null);
 
-    return (
-      <View style={styles.completionDetails}>
-        <Text style={styles.completionText}>
-          Completed by: {completedBy}
-        </Text>
-        <Text style={styles.completionTime}>
-          {completedTime}
-        </Text>
-        {schedule.admin_reason && (
-          <Text style={styles.adminReason}>
-            Reason: {schedule.admin_reason}
-          </Text>
-        )}
-      </View>
+      console.log('Fetching wash schedules for driver:', driver.id);
+      
+      // Get today's wash schedules following webapp protocol
+      const data = await getTodaysWashSchedule(driver.id);
+      
+      console.log('Fetched wash schedules:', data);
+      setSchedules(data);
+      
+      if (data.length === 0) {
+        console.log('No wash schedules found for today');
+      }
+    } catch (err) {
+      console.error('Error loading wash schedules:', err);
+      setError('Failed to load wash schedules');
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchSchedules(false);
+    setRefreshing(false);
+  };
+
+  const handleCompleteWash = (schedule: WashSchedule) => {
+    // TODO: Navigate to completion screen with camera
+    Alert.alert(
+      'Complete Wash',
+      'Camera functionality will be implemented to take a photo and complete the wash.',
+      [
+        {
+          text: 'OK',
+          onPress: () => {
+            // For demo purposes, you could call completeWashByDriver here
+            console.log('Would complete wash for schedule:', schedule.id);
+          }
+        }
+      ]
     );
   };
+
+  const handleViewImage = (imageUrl: string, vehiclePlate: string) => {
+    // TODO: Navigate to image viewer or show modal
+    Alert.alert(
+      'Wash Image',
+      `View wash image for ${vehiclePlate}`,
+      [
+        {
+          text: 'OK',
+          onPress: () => {
+            console.log('Would show image:', imageUrl);
+          }
+        }
+      ]
+    );
+  };
+
+  // Load driver and vehicle on mount
+  useEffect(() => {
+    const initializeData = async () => {
+      await loadDriverAndVehicle();
+    };
+    initializeData();
+  }, []);
+
+  // Fetch schedules when driver is loaded
+  useEffect(() => {
+    if (driver?.id) {
+      fetchSchedules();
+    }
+  }, [driver]);
+
+  // Refetch on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      if (driver?.id) {
+        fetchSchedules();
+      }
+    }, [driver])
+  );
+
+  if (loading && schedules.length === 0) {
+    return <LoadingIndicator fullScreen message="Loading wash schedules..." />;
+  }
+
+  if (!driver) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <Ionicons name="person-outline" size={64} color={colors.gray300} />
+        <Text style={styles.errorText}>Unable to load driver information</Text>
+      </View>
+    );
+  }
+
+  if (!vehicle) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <Ionicons name="car-outline" size={64} color={colors.gray300} />
+        <Text style={styles.errorText}>No vehicle assigned to your account</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.vehicleInfo}>
-          <Text style={styles.vehiclePlate}>{vehicle.license_plate}</Text>
-          <Text style={styles.vehicleDetails}>
-            {vehicle.brand} {vehicle.model}
+          <Text style={styles.vehicleLabel}>Vehicle:</Text>
+          <Text style={styles.vehicleText}>
+            {vehicle.license_plate} • {vehicle.brand} {vehicle.model}
           </Text>
         </View>
-        
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor() }]}>
-          <Text style={styles.statusText}>{getStatusText()}</Text>
+        <View style={styles.todayBadge}>
+          <Text style={styles.todayText}>Today</Text>
         </View>
       </View>
 
-      <View style={styles.scheduleInfo}>
-        <View style={styles.dateContainer}>
-          <Ionicons name="calendar-outline" size={16} color={colors.textLight} />
-          <Text style={styles.dateText}>
-            {scheduledDate.toLocaleDateString('en-US', {
-              weekday: 'long',
-              month: 'long',
-              day: 'numeric'
-            })}
-          </Text>
-        </View>
-      </View>
+      {error && <ErrorMessage message={error} />}
 
-      {getCompletionDetails()}
-
-      {schedule.notes && (
-        <View style={styles.notesContainer}>
-          <Text style={styles.notesLabel}>Notes:</Text>
-          <Text style={styles.notesText}>{schedule.notes}</Text>
-        </View>
-      )}
-
-      {!isCompleted && (
-        <TouchableOpacity 
-          style={styles.completeButton}
-          onPress={() => onComplete(schedule)}
-        >
-          <Ionicons name="checkmark-circle-outline" size={20} color={colors.background} />
-          <Text style={styles.completeButtonText}>Mark as Complete</Text>
-        </TouchableOpacity>
-      )}
-
-      {isCompleted && schedule.image_url && (
-        <View style={styles.imageIndicator}>
-          <Ionicons name="camera-outline" size={16} color={colors.success} />
-          <Text style={styles.imageIndicatorText}>Photo attached</Text>
-        </View>
-      )}
+      <FlatList
+        data={schedules}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <WashScheduleCard
+            schedule={item}
+            onComplete={handleCompleteWash}
+            onViewImage={handleViewImage}
+          />
+        )}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Ionicons name="water-outline" size={64} color={colors.gray300} />
+            <Text style={styles.emptyStateTitle}>No Wash Schedule</Text>
+            <Text style={styles.emptyStateDescription}>
+              No vehicle wash scheduled for today.{'\n'}
+              Pull down to refresh.
+            </Text>
+          </View>
+        }
+        showsVerticalScrollIndicator={false}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.card,
-    borderRadius: layouts.borderRadius.lg,
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
     padding: layouts.spacing.lg,
-    marginVertical: layouts.spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.gray200,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+  },
+  errorText: {
+    fontSize: 16,
+    color: colors.error,
+    textAlign: 'center',
+    marginTop: layouts.spacing.md,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: layouts.spacing.md,
+    alignItems: 'center',
+    paddingHorizontal: layouts.spacing.lg,
+    paddingVertical: layouts.spacing.md,
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray200,
   },
   vehicleInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
   },
-  vehiclePlate: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.primary,
-    marginBottom: layouts.spacing.xs,
+  vehicleLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textLight,
+    marginRight: layouts.spacing.xs,
   },
-  vehicleDetails: {
+  vehicleText: {
     fontSize: 14,
     color: colors.text,
+    flex: 1,
   },
-  statusBadge: {
-    paddingHorizontal: layouts.spacing.sm,
+  todayBadge: {
+    backgroundColor: colors.primary + '20',
+    paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: layouts.borderRadius.full,
   },
-  statusText: {
+  todayText: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.background,
+    color: colors.primary,
   },
-  scheduleInfo: {
-    marginBottom: layouts.spacing.md,
+  listContent: {
+    padding: layouts.spacing.lg,
   },
-  dateContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: layouts.spacing.xs,
-  },
-  dateText: {
-    fontSize: 14,
-    color: colors.text,
-    fontWeight: '500',
-  },
-  completionDetails: {
-    backgroundColor: colors.success + '10',
-    borderRadius: layouts.borderRadius.md,
-    padding: layouts.spacing.sm,
-    marginBottom: layouts.spacing.md,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.success,
-  },
-  completionText: {
-    fontSize: 12,
-    color: colors.success,
-    fontWeight: '600',
-  },
-  completionTime: {
-    fontSize: 12,
-    color: colors.textLight,
-    marginTop: 2,
-  },
-  adminReason: {
-    fontSize: 12,
-    color: colors.textLight,
-    fontStyle: 'italic',
-    marginTop: 4,
-  },
-  notesContainer: {
-    backgroundColor: colors.gray100,
-    borderRadius: layouts.borderRadius.md,
-    padding: layouts.spacing.sm,
-    marginBottom: layouts.spacing.md,
-  },
-  notesLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textLight,
-    marginBottom: 4,
-  },
-  notesText: {
-    fontSize: 14,
-    color: colors.text,
-  },
-  completeButton: {
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
+  emptyState: {
+    flex: 1,
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: layouts.borderRadius.md,
-    gap: layouts.spacing.xs,
-  },
-  completeButtonText: {
-    color: colors.background,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  imageIndicator: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: layouts.spacing.xs,
-    paddingVertical: layouts.spacing.xs,
+    paddingVertical: layouts.spacing.xxl * 2,
   },
-  imageIndicatorText: {
-    fontSize: 12,
-    color: colors.success,
-    fontWeight: '500',
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: layouts.spacing.lg,
+    marginBottom: layouts.spacing.sm,
+  },
+  emptyStateDescription: {
+    fontSize: 14,
+    color: colors.textLight,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

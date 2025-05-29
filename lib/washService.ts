@@ -1,233 +1,69 @@
+// lib/washService.ts
 import { supabase } from './supabase';
-import { DriverWashSchedule, WashCompletionData } from '../utils/washTypes';
-import { getDriverInfo } from './auth';
 
-export const getDriverWashSchedules = async (date: string): Promise<DriverWashSchedule[]> => {
+export interface WashSchedule {
+  id: string;
+  vehicle_id: string;
+  driver_id: string | null;
+  scheduled_date: string;
+  status: 'pending' | 'completed';
+  completed_at: string | null;
+  completed_by_type: 'driver' | 'admin' | null;
+  completed_by_user_id: string | null;
+  image_url: string | null;
+  admin_reason: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  vehicle?: {
+    id: string;
+    license_plate: string;
+    brand: string;
+    model: string;
+    type: string;
+    driver?: {
+      id: string;
+      first_name: string | null;
+      last_name: string | null;
+      email: string;
+    } | null;
+  };
+  completed_by_user?: {
+    id: string;
+    name: string | null;
+    email: string;
+  } | null;
+}
+
+// Trigger auto-generation via web API
+const triggerAutoGeneration = async (date: string): Promise<void> => {
   try {
-    const driverInfo = await getDriverInfo();
-    if (!driverInfo?.id) {
-      throw new Error('Driver information not available');
-    }
-
-    const response = await fetch(`https://fleet.milesxp.com/api/wash-schedule?date=${date}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch wash schedules: ${response.status}`);
-    }
-
-    const result = await response.json();
-    const allSchedules = result.schedules || [];
-
-    const driverSchedules = allSchedules
-      .filter((schedule: any) => schedule.driver_id === driverInfo.id)
-      .map((schedule: any) => ({
-        id: schedule.id,
-        vehicle_id: schedule.vehicle_id,
-        scheduled_date: schedule.scheduled_date,
-        status: schedule.status,
-        completed_at: schedule.completed_at,
-        completed_by_type: schedule.completed_by_type,
-        image_url: schedule.image_url,
-        admin_reason: schedule.admin_reason,
-        notes: schedule.notes,
-        vehicle: {
-          id: schedule.vehicle.id,
-          license_plate: schedule.vehicle.license_plate,
-          brand: schedule.vehicle.brand,
-          model: schedule.vehicle.model,
-          type: schedule.vehicle.type,
-        },
-        was_completed_early: schedule.completed_at ? 
-          new Date(schedule.completed_at) < new Date(schedule.scheduled_date + 'T00:00:00') : 
-          false,
-      }));
-
-    return driverSchedules;
-  } catch (error) {
-    console.error('Error fetching driver wash schedules:', error);
+    console.log('Triggering auto-generation via web API for:', date);
     
-    try {
-      const driverInfo = await getDriverInfo();
-      if (!driverInfo?.id) return [];
-
-      const { data, error: dbError } = await supabase
-        .from('wash_schedules')
-        .select(`
-          *,
-          vehicle:vehicles(
-            id,
-            license_plate,
-            brand,
-            model,
-            type
-          )
-        `)
-        .eq('scheduled_date', date)
-        .eq('driver_id', driverInfo.id);
-
-      if (dbError) {
-        console.error('Database error:', dbError);
-        return [];
-      }
-
-      return (data || []).map((schedule: any) => ({
-        id: schedule.id,
-        vehicle_id: schedule.vehicle_id,
-        scheduled_date: schedule.scheduled_date,
-        status: schedule.status,
-        completed_at: schedule.completed_at,
-        completed_by_type: schedule.completed_by_type,
-        image_url: schedule.image_url,
-        admin_reason: schedule.admin_reason,
-        notes: schedule.notes,
-        vehicle: {
-          id: schedule.vehicle.id,
-          license_plate: schedule.vehicle.license_plate,
-          brand: schedule.vehicle.brand,
-          model: schedule.vehicle.model,
-          type: schedule.vehicle.type,
-        },
-        was_completed_early: schedule.completed_at ? 
-          new Date(schedule.completed_at) < new Date(schedule.scheduled_date + 'T00:00:00') : 
-          false,
-      }));
-    } catch (dbError) {
-      console.error('Fallback database error:', dbError);
-      return [];
-    }
-  }
-};
-
-export const fetchDriverWashSchedules = async (
-  driverId: string, 
-  vehicleId: string, 
-  date: string
-): Promise<WashSchedule[]> => {
-  console.log('Fetching wash schedules for:', { driverId, vehicleId, date });
-  
-  try {
-    // Try direct database query first to see if data exists
-    const { supabase } = await import('./supabase');
-    
-    // First, let's see what dates we have in the database
-    const { data: allSchedules } = await supabase
-      .from('wash_schedules')
-      .select('scheduled_date, vehicle_id, driver_id, status')
-      .limit(10);
-    
-    console.log('All schedules in database (first 10):', allSchedules);
-    
-    // Now query for the specific date
-    const { data, error: dbError } = await supabase
-      .from('wash_schedules')
-      .select(`
-        *,
-        vehicle:vehicles(
-          id,
-          license_plate,
-          brand,
-          model,
-          type
-        )
-      `)
-      .eq('vehicle_id', vehicleId)
-      .eq('scheduled_date', date);
-    
-    console.log('Database query result for date:', { date, data, error: dbError });
-    
-    if (dbError) {
-      console.error('Database error:', dbError);
-      return [];
-    }
-    
-    // Filter for this driver (in case vehicle was reassigned)
-    const driverSchedules = (data || []).filter((schedule: any) => 
-      schedule.driver_id === driverId || schedule.vehicle_id === vehicleId
-    );
-    
-    console.log('Filtered schedules for driver:', driverSchedules);
-    
-    // If no schedules for today, let's check if there are any schedules for this vehicle at all
-    if (driverSchedules.length === 0) {
-      const { data: anySchedules } = await supabase
-        .from('wash_schedules')
-        .select(`
-          *,
-          vehicle:vehicles(
-            id,
-            license_plate,
-            brand,
-            model,
-            type
-          )
-        `)
-        .eq('vehicle_id', vehicleId)
-        .limit(5);
-      
-      console.log('Any schedules for this vehicle:', anySchedules);
-    }
-    
-    return driverSchedules;
-  } catch (error) {
-    console.error('Error fetching driver wash schedules:', error);
-    return [];
-  }
-};
-
-export const completeWashByDriver = async (data: {
-  schedule_id: string;
-  image_uri: string;
-  notes?: string;
-}): Promise<boolean> => {
-  try {
-    const formData = new FormData();
-    formData.append('schedule_id', data.schedule_id);
-    formData.append('notes', data.notes || '');
-    
-    // Convert image URI to blob for upload
-    const response = await fetch(data.image_uri);
-    const blob = await response.blob();
-    formData.append('image', blob as any, 'wash_photo.jpg');
-    
-    const apiResponse = await fetch('https://fleet.milesxp.com/api/wash-schedule/driver-complete', {
+    const response = await fetch('https://fleet.milesxp.com/api/wash-schedule/auto-generate', {
       method: 'POST',
-      body: formData
+      headers: {
+        'Content-Type': 'application/json'
+      }
     });
     
-    if (!apiResponse.ok) {
-      throw new Error(`Failed to complete wash: ${apiResponse.status}`);
+    if (response.ok) {
+      const result = await response.json();
+      console.log('Auto-generation result:', result);
+    } else {
+      console.log('Auto-generation failed:', response.status);
     }
+  } catch (error) {
+    console.error('Error triggering auto-generation:', error);
+  }
+};
+
+// Fetch wash schedules - SIMPLE VERSION (no auto-generation)
+export const fetchWashSchedules = async (date: string): Promise<WashSchedule[]> => {
+  try {
+    console.log('Fetching wash schedules from Supabase for date:', date);
     
-    return true;
-  } catch (error) {
-    console.error('Error completing wash by driver:', error);
-    return false;
-  }
-};
-
-export const getTodaysWashSchedules = async (): Promise<DriverWashSchedule[]> => {
-  const today = new Date().toISOString().split('T')[0];
-  return getDriverWashSchedules(today);
-};
-
-export const hasWashScheduleForDate = async (date: string): Promise<boolean> => {
-  try {
-    const schedules = await getDriverWashSchedules(date);
-    return schedules.length > 0;
-  } catch (error) {
-    console.error('Error checking wash schedule for date:', error);
-    return false;
-  }
-};
-
-export const getWashScheduleById = async (scheduleId: string): Promise<WashSchedule | null> => {
-  try {
-    const { supabase } = await import('./supabase');
+    // Just read schedules from Supabase (webapp already created them)
     const { data, error } = await supabase
       .from('wash_schedules')
       .select(`
@@ -237,20 +73,105 @@ export const getWashScheduleById = async (scheduleId: string): Promise<WashSched
           license_plate,
           brand,
           model,
-          type
+          type,
+          driver:drivers(
+            id,
+            first_name,
+            last_name,
+            email
+          )
         )
       `)
-      .eq('id', scheduleId)
-      .single();
-    
+      .eq('scheduled_date', date)
+      .order('created_at', { ascending: false });
+
     if (error) {
-      console.error('Error fetching schedule by ID:', error);
-      return null;
+      console.error('Error fetching from Supabase:', error);
+      return [];
+    }
+
+    console.log('Supabase schedules result:', data?.length || 0, 'schedules found');
+    return data || [];
+  } catch (error) {
+    console.error('Error in fetchWashSchedules:', error);
+    return [];
+  }
+};
+
+// Complete wash by driver
+export const completeWashByDriver = async (
+  scheduleId: string,
+  imageFile: File | Blob,
+  notes?: string
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    console.log('Completing wash via Supabase:', scheduleId);
+    
+    // First upload image to Supabase storage
+    let imageUrl: string | null = null;
+    
+    if (imageFile) {
+      const fileName = `driver_${scheduleId}_${Date.now()}.jpg`;
+      
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('wash')
+        .upload(fileName, imageFile, {
+          contentType: imageFile.type || 'image/jpeg'
+        });
+      
+      if (uploadError) {
+        console.error('Error uploading image:', uploadError);
+        return { success: false, error: 'Failed to upload image' };
+      }
+      
+      const { data: publicUrl } = supabase.storage
+        .from('wash')
+        .getPublicUrl(fileName);
+      
+      imageUrl = publicUrl.publicUrl;
     }
     
-    return data;
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    // Update schedule
+    const { error: updateError } = await supabase
+      .from('wash_schedules')
+      .update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        completed_by_type: 'driver',
+        completed_by_user_id: user?.id || null,
+        image_url: imageUrl,
+        notes: notes || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', scheduleId);
+
+    if (updateError) {
+      console.error('Error updating schedule:', updateError);
+      return { success: false, error: updateError.message };
+    }
+
+    console.log('Wash completed successfully');
+    return { success: true };
   } catch (error) {
-    console.error('Error fetching wash schedule by ID:', error);
-    return null;
+    console.error('Error completing wash:', error);
+    return { success: false, error: 'Failed to complete wash schedule' };
   }
+};
+
+// Get driver's wash schedules for date
+export const getDriverWashSchedules = async (
+  driverId: string,
+  date: string
+): Promise<WashSchedule[]> => {
+  const allSchedules = await fetchWashSchedules(date);
+  return allSchedules.filter(schedule => schedule.driver_id === driverId);
+};
+
+// Get today's wash schedule for driver
+export const getTodaysWashSchedule = async (driverId: string): Promise<WashSchedule[]> => {
+  const today = new Date().toISOString().split('T')[0];
+  return getDriverWashSchedules(driverId, today);
 };
