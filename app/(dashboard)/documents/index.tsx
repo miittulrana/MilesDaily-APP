@@ -7,13 +7,16 @@ import DocumentList from '../../../components/documents/DocumentList';
 import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { getDriverInfo, getAssignedVehicle } from '../../../lib/auth';
+import { getDriverTempAssignments } from '../../../lib/tempAssignmentService';
 import { fetchDriverDocuments, fetchVehicleDocuments } from '../../../lib/documentsService';
 import { DriverInfo, Vehicle } from '../../../utils/types';
 import { DriverDocument, VehicleDocument } from '../../../utils/documentTypes';
+import { TempAssignment } from '../../../utils/tempAssignmentTypes';
 
 export default function DocumentsScreen() {
   const [driver, setDriver] = useState<DriverInfo | null>(null);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [tempAssignment, setTempAssignment] = useState<TempAssignment | null>(null);
   const [driverDocs, setDriverDocs] = useState<DriverDocument[]>([]);
   const [vehicleDocs, setVehicleDocs] = useState<VehicleDocument[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,12 +32,33 @@ export default function DocumentsScreen() {
       setDriver(driverData);
 
       if (driverData?.id) {
-        const vehicleData = await getAssignedVehicle(driverData.id);
-        setVehicle(vehicleData);
+        const [tempAssignments, permanentVehicle] = await Promise.all([
+          getDriverTempAssignments(driverData.id),
+          getAssignedVehicle(driverData.id)
+        ]);
+
+        const activeAssignment = tempAssignments.find(assignment => assignment.status === 'active');
+        setTempAssignment(activeAssignment || null);
+
+        let currentVehicle = permanentVehicle;
+        if (activeAssignment?.vehicle) {
+          currentVehicle = {
+            id: activeAssignment.vehicle_id,
+            license_plate: activeAssignment.vehicle.license_plate,
+            brand: activeAssignment.vehicle.brand,
+            model: activeAssignment.vehicle.model,
+            type: activeAssignment.vehicle.type,
+            status: 'assigned',
+            fuel_type: '',
+            created_at: '',
+          };
+        }
+        
+        setVehicle(currentVehicle);
 
         const [driverDocsData, vehicleDocsData] = await Promise.all([
           fetchDriverDocuments(driverData.id),
-          vehicleData ? fetchVehicleDocuments(vehicleData.id) : Promise.resolve([])
+          currentVehicle ? fetchVehicleDocuments(currentVehicle.id) : Promise.resolve([])
         ]);
 
         setDriverDocs(driverDocsData);
@@ -60,6 +84,12 @@ export default function DocumentsScreen() {
     setRefreshing(false);
   };
 
+  const getVehicleDisplayName = () => {
+    if (!vehicle) return '';
+    const baseName = `${vehicle.license_plate} - ${vehicle.brand} ${vehicle.model}`;
+    return tempAssignment ? `${baseName} (Temporary Assignment)` : baseName;
+  };
+
   if (loading && !refreshing) {
     return <LoadingIndicator fullScreen message="Loading documents..." />;
   }
@@ -81,8 +111,15 @@ export default function DocumentsScreen() {
         <Text style={styles.title}>My Documents</Text>
         {vehicle && (
           <Text style={styles.subtitle}>
-            {vehicle.license_plate} - {vehicle.brand} {vehicle.model}
+            {getVehicleDisplayName()}
           </Text>
+        )}
+        {tempAssignment && (
+          <View style={styles.tempAssignmentBadge}>
+            <Text style={styles.tempAssignmentText}>
+              Showing documents for temporary vehicle
+            </Text>
+          </View>
         )}
       </View>
 
@@ -122,6 +159,19 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: colors.textLight,
+  },
+  tempAssignmentBadge: {
+    backgroundColor: colors.primary + '15',
+    paddingHorizontal: layouts.spacing.md,
+    paddingVertical: layouts.spacing.sm,
+    borderRadius: layouts.borderRadius.md,
+    marginTop: layouts.spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  tempAssignmentText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '600',
   },
   errorContainer: {
     backgroundColor: colors.error + '10',

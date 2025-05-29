@@ -55,6 +55,14 @@ export default function DashboardLayout() {
           title: 'Documents',
         }}
       />
+      <Stack.Screen
+        name="temp-assignment-documents"
+        options={{
+          headerShown: false,
+          title: 'Temp Vehicle Documents',
+          presentation: 'card',
+        }}
+      />
     </Stack>
   );
 }

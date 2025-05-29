@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   completeButton: {
-    backgroundColor: 'rgba(16, 185, 129, 0.8)',
+    backgroundColor: 'rgb(10, 109, 40)',
   },
   actionButtonText: {
     color: colors.background,

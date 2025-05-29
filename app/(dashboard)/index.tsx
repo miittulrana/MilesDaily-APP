@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import LoadingIndicator from '../../components/LoadingIndicator';
 import ModuleCard from '../../components/ModuleCard';
 import TempAssignmentBanner from '../../components/temp-assignments/TempAssignmentBanner';
@@ -15,34 +15,42 @@ export default function DashboardScreen() {
   const [driver, setDriver] = useState<DriverInfo | null>(null);
   const [vehicle, setVehicle] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   
   const {
     assignments,
     loading: assignmentsLoading,
     refetch: refetchAssignments,
     hasActiveAssignments,
-  } = useTempAssignments(driver?.id || '');
+  } = useTempAssignments(driver?.id);
   
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        const driverData = await getDriverInfo();
-        setDriver(driverData);
-        
-        if (driverData?.id) {
-          const vehicleData = await getAssignedVehicle(driverData.id);
-          setVehicle(vehicleData);
-        }
-      } catch (error) {
-        console.error('Error loading dashboard data:', error);
-      } finally {
-        setLoading(false);
+  const loadData = async (showLoading = true) => {
+    try {
+      if (showLoading) setLoading(true);
+      const driverData = await getDriverInfo();
+      setDriver(driverData);
+      
+      if (driverData?.id) {
+        const vehicleData = await getAssignedVehicle(driverData.id);
+        setVehicle(vehicleData);
       }
-    };
-    
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     loadData();
   }, []);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadData(false);
+    await refetchAssignments();
+    setRefreshing(false);
+  };
 
   const getDriverName = () => {
     if (!driver) return '';
@@ -77,69 +85,73 @@ export default function DashboardScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.welcomeText}>Welcome back,</Text>
-        <Text style={styles.driverName}>{getDriverName()}</Text>
-        {driver?.role && (
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleBadgeText}>{getRoleLabel(driver.role)}</Text>
+    <ScrollView 
+      style={styles.container} 
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          colors={[colors.primary]}
+          tintColor={colors.primary}
+        />
+      }
+    >
+      {/* Header Section with Welcome and Vehicle Info */}
+      <View style={styles.headerRow}>
+        <View style={styles.welcomeSection}>
+          <Text style={styles.welcomeText}>Welcome back,</Text>
+          <Text style={styles.driverName}>{getDriverName()}</Text>
+          {driver?.role && (
+            <View style={styles.roleBadge}>
+              <Text style={styles.roleBadgeText}>{getRoleLabel(driver.role)}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Vehicle Info Card on Right */}
+        {vehicle ? (
+          <View style={styles.vehicleInfoCard}>
+            <Text style={styles.vehicleNumber}>{vehicle.license_plate}</Text>
+            <Text style={styles.fuelType}>{vehicle.fuel_type || 'N/A'}</Text>
+          </View>
+        ) : (
+          <View style={styles.noVehicleCard}>
+            <Text style={styles.noVehicleText}>No Vehicle</Text>
           </View>
         )}
       </View>
 
-      {hasActiveAssignments && assignments.length > 0 && (
+      {/* Temp Assignment Banner */}
+      {driver?.id && hasActiveAssignments && assignments.length > 0 && (
         <TempAssignmentBanner
           assignment={assignments[0]}
           onRefresh={refetchAssignments}
         />
       )}
 
-      {vehicle ? (
-        <View style={styles.vehicleCard}>
-          <View style={styles.vehicleCardHeader}>
-            <Text style={styles.vehicleCardTitle}>Assigned Vehicle</Text>
-          </View>
-          <View style={styles.vehicleInfo}>
-            <Text style={styles.vehicleLicensePlate}>{vehicle.license_plate}</Text>
-            <Text style={styles.vehicleModel}>{vehicle.brand} {vehicle.model}</Text>
-            <Text style={styles.vehicleDetail}>Type: {vehicle.type || 'N/A'}</Text>
-            <Text style={styles.vehicleDetail}>Fuel: {vehicle.fuel_type || 'N/A'}</Text>
-          </View>
-        </View>
-      ) : (
-        <View style={styles.noVehicleCard}>
-          <Text style={styles.noVehicleText}>No vehicle assigned</Text>
-        </View>
-      )}
-
-      <View style={styles.modulesSection}>
-        <Text style={styles.sectionTitle}>Modules</Text>
-        <View style={styles.modulesGrid}>
+      {/* Modules Grid - 2x2 Layout */}
+      <View style={styles.modulesGrid}>
+        <View style={styles.moduleRow}>
           <ModuleCard
             title="Fuel"
-            description="Record and track fuel expenses"
             iconName="water"
             onPress={() => navigateToModule('fuel')}
           />
           <ModuleCard
             title="Wash"
-            description="View and complete vehicle wash schedules"
             iconName="car-outline"
             onPress={() => navigateToModule('wash')}
           />
+        </View>
+        
+        <View style={styles.moduleRow}>
           <ModuleCard
             title="Documents"
-            description="View driver and vehicle documents"
             iconName="document-text-outline"
             onPress={() => navigateToModule('documents')}
           />
-          <ModuleCard
-            title="Profile"
-            description="View and manage your profile"
-            iconName="person"
-            onPress={() => navigateToModule('profile')}
-          />
+          <View style={styles.emptyModuleSlot} />
         </View>
       </View>
     </ScrollView>
@@ -153,9 +165,17 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: layouts.spacing.lg,
+    paddingBottom: layouts.spacing.xl,
   },
-  header: {
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: layouts.spacing.xl,
+  },
+  welcomeSection: {
+    flex: 1,
+    marginRight: layouts.spacing.md,
   },
   welcomeText: {
     fontSize: 16,
@@ -166,6 +186,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     marginTop: layouts.spacing.xs,
+    marginBottom: layouts.spacing.sm,
   },
   roleBadge: {
     backgroundColor: colors.primary,
@@ -173,18 +194,16 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 12,
     borderRadius: layouts.borderRadius.full,
-    marginTop: layouts.spacing.sm,
   },
   roleBadgeText: {
     color: colors.background,
     fontSize: 12,
     fontWeight: '600',
   },
-  vehicleCard: {
+  vehicleInfoCard: {
     backgroundColor: colors.card,
     borderRadius: layouts.borderRadius.lg,
     padding: layouts.spacing.lg,
-    marginBottom: layouts.spacing.xl,
     borderWidth: 1,
     borderColor: colors.gray200,
     shadowColor: colors.shadow,
@@ -192,63 +211,47 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
+    alignItems: 'center',
+    minWidth: 120,
   },
-  vehicleCardHeader: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray200,
-    paddingBottom: layouts.spacing.sm,
-    marginBottom: layouts.spacing.md,
-  },
-  vehicleCardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  vehicleInfo: {
-    gap: layouts.spacing.sm,
-  },
-  vehicleLicensePlate: {
-    fontSize: 20,
+  vehicleNumber: {
+    fontSize: 18,
     fontWeight: '700',
     color: colors.primary,
+    marginBottom: layouts.spacing.xs,
+    textAlign: 'center',
   },
-  vehicleModel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: colors.text,
-  },
-  vehicleDetail: {
+  fuelType: {
     fontSize: 14,
     color: colors.textLight,
+    textTransform: 'capitalize',
+    textAlign: 'center',
   },
   noVehicleCard: {
     backgroundColor: colors.gray100,
     borderRadius: layouts.borderRadius.lg,
     padding: layouts.spacing.lg,
-    marginBottom: layouts.spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.gray200,
-    height: 150,
+    alignItems: 'center',
+    minWidth: 120,
   },
   noVehicleText: {
-    fontSize: 16,
+    fontSize: 14,
     color: colors.gray500,
-    marginTop: layouts.spacing.md,
-  },
-  modulesSection: {
-    marginBottom: layouts.spacing.xl,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: layouts.spacing.md,
+    textAlign: 'center',
   },
   modulesGrid: {
+    flex: 1,
+    marginTop: layouts.spacing.lg,
+  },
+  moduleRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: layouts.spacing.md,
+    justifyContent: 'space-between',
+    marginBottom: layouts.spacing.xl,
+    gap: layouts.spacing.lg,
+  },
+  emptyModuleSlot: {
+    flex: 1,
   },
 });

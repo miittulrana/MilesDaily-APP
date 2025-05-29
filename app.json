@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "MilesXP Daily",
-    "slug": "milesxp-daily",
-    "owner": "miittulrana55",
+    "name": "Miles-XP Daily.",
+    "slug": "fleet-management",
+    "owner": "milesexpress",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -62,13 +62,13 @@
         }
       ]
     ],
-    "scheme": "milesxp-daily",
+    "scheme": "fleet-management",
     "extra": {
       "router": {
         "origin": false
       },
       "eas": {
-        "projectId": "3ea31db3-72cd-4096-a07a-cde10dc6466a"
+        "projectId": "88c8bcec-86c5-4a3b-8b7c-b49fcbce38b4"
       }
     }
   }

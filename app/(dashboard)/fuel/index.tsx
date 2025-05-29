@@ -59,14 +59,12 @@ export default function FuelRecordsScreen() {
     }
   }, [driver, vehicle]);
 
-  // Setup realtime listener for fuel records
   useEffect(() => {
     if (!vehicle?.id) return;
 
     let isSubscribed = true;
     const channelName = `fuel-records-${vehicle.id}`;
     
-    // Remove any existing channel with the same name first
     const existingChannels = supabase.getChannels();
     existingChannels.forEach(channel => {
       if (channel.topic === `realtime:${channelName}`) {
@@ -88,7 +86,6 @@ export default function FuelRecordsScreen() {
           if (!isSubscribed) return;
           
           console.log('Fuel record changed:', payload);
-          // Refresh records when changes occur
           if (driver?.id && vehicle?.id) {
             getAllFuelRecords(driver.id, vehicle.id).then(data => {
               if (isSubscribed) {
@@ -107,7 +104,7 @@ export default function FuelRecordsScreen() {
         supabase.removeChannel(channel);
       }
     };
-  }, [vehicle?.id]); // Only depend on vehicle ID
+  }, [vehicle?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -144,12 +141,7 @@ export default function FuelRecordsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.vehicleInfo}>
-          <Text style={styles.vehicleLabel}>Vehicle:</Text>
-          <Text style={styles.vehicleText}>
-            {vehicle.license_plate} • {vehicle.brand} {vehicle.model}
-          </Text>
-        </View>
+        <Text style={styles.headerTitle}>Fuel Records</Text>
         <TouchableOpacity style={styles.addButton} onPress={handleAddFuel}>
           <Ionicons name="add" size={20} color={colors.background} />
           <Text style={styles.addButtonText}>Add Fuel</Text>
@@ -213,38 +205,39 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: layouts.spacing.lg,
-    paddingVertical: layouts.spacing.md,
+    paddingVertical: layouts.spacing.lg,
     backgroundColor: colors.card,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray200,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  vehicleInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  vehicleLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.textLight,
-    marginRight: layouts.spacing.xs,
-  },
-  vehicleText: {
-    fontSize: 14,
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
     color: colors.text,
   },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primary,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: layouts.borderRadius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: layouts.borderRadius.lg,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   addButtonText: {
     color: colors.background,
-    fontSize: 14,
-    fontWeight: '500',
-    marginLeft: layouts.spacing.xs,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: layouts.spacing.sm,
   },
   listContent: {
     padding: layouts.spacing.lg,
