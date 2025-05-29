@@ -69,9 +69,9 @@ export default function PhotoCapture({
 
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: imageType === 'accident_photo' ? [16, 9] : [4, 3],
+        allowsEditing: false, // No cropping - accept as is
         quality: 0.8,
+        exif: false, // Don't include EXIF data to reduce size
       });
 
       if (!result.canceled && result.assets[0]) {
@@ -102,9 +102,9 @@ export default function PhotoCapture({
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: imageType === 'accident_photo' ? [16, 9] : [4, 3],
+        allowsEditing: false, // No cropping - accept as is
         quality: 0.8,
+        exif: false, // Don't include EXIF data to reduce size
       });
 
       if (!result.canceled && result.assets[0]) {

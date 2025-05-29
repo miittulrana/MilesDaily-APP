@@ -66,35 +66,85 @@ export const uploadAccidentImage = async (
   imageOrder: number
 ): Promise<{ success: boolean; error?: string }> => {
   try {
-    const headers = await getAuthHeaders();
-    delete headers['Content-Type'];
-
-    const formData = new FormData();
+    console.log('Starting direct Supabase image upload:', { reportId, imageType, imageOrder });
     
-    const response = await fetch(imageUri);
-    const blob = await response.blob();
-    
-    formData.append('file', blob, `${imageType}_${imageOrder}.jpg`);
-    formData.append('imageType', imageType);
-    formData.append('imageOrder', imageOrder.toString());
-
-    const uploadResponse = await fetch(`${BASE_URL}/${reportId}/upload`, {
-      method: 'POST',
-      headers: {
-        'Authorization': headers.Authorization,
-      },
-      body: formData,
-    });
-
-    if (!uploadResponse.ok) {
-      const error = await uploadResponse.json();
-      return { success: false, error: error.error || 'Failed to upload image' };
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user?.id) {
+      throw new Error('No authenticated user');
     }
 
+    // Upload directly to Supabase Storage (like wash service does)
+    console.log('Fetching image from URI:', imageUri);
+    const response = await fetch(imageUri);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.status}`);
+    }
+    
+    const imageData = await response.arrayBuffer();
+    console.log('Image data loaded, size:', imageData.byteLength);
+    
+    const fileExt = 'jpg';
+    const fileName = `${imageType}_${imageOrder}_${reportId}_${Date.now()}.${fileExt}`;
+    const filePath = `${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${reportId}/${fileName}`;
+    
+    const bucketName = imageType === 'accident_photo' ? 'accident-photos' : 'accident-forms';
+    
+    console.log('Uploading to Supabase storage:', { bucketName, filePath });
+    
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(bucketName)
+      .upload(filePath, imageData, {
+        contentType: 'image/jpeg',
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('Supabase upload error:', uploadError);
+      throw new Error(`Failed to upload image: ${uploadError.message}`);
+    }
+
+    console.log('Image uploaded successfully:', uploadData.path);
+
+    // Get public URL
+    const { data: publicUrlData } = supabase.storage
+      .from(bucketName)
+      .getPublicUrl(uploadData.path);
+
+    const imageUrl = publicUrlData.publicUrl;
+    console.log('Image public URL:', imageUrl);
+
+    // Save image record to database
+    const { data: imageRecord, error: imageError } = await supabase
+      .from('accident_report_images')
+      .insert({
+        accident_report_id: reportId,
+        image_type: imageType,
+        image_order: imageOrder,
+        image_url: imageUrl,
+        image_name: fileName,
+        image_size: imageData.byteLength,
+        mime_type: 'image/jpeg',
+        uploaded_by_driver: user.id
+      })
+      .select()
+      .single();
+
+    if (imageError) {
+      console.error('Database insert error:', imageError);
+      // Clean up uploaded file if database insert fails
+      await supabase.storage
+        .from(bucketName)
+        .remove([filePath]);
+      
+      throw new Error(`Failed to save image record: ${imageError.message}`);
+    }
+
+    console.log('Image record saved successfully:', imageRecord.id);
     return { success: true };
+    
   } catch (error) {
     console.error('Error uploading accident image:', error);
-    return { success: false, error: 'Network error' };
+    return { success: false, error: error.message || 'Upload failed' };
   }
 };
 

@@ -43,7 +43,6 @@ export default function CreateAccidentScreen() {
   const [form2Images, setForm2Images] = useState<string[]>([]);
   const [accidentPhotos, setAccidentPhotos] = useState<string[]>([]);
   
-  const [reportId, setReportId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -100,7 +99,8 @@ export default function CreateAccidentScreen() {
           Alert.alert('Error', 'Please enter accident location');
           return;
         }
-        await createReport();
+        // Don't create report here - just move to photos
+        setCurrentStep('photos');
         break;
         
       case 'photos':
@@ -108,7 +108,8 @@ export default function CreateAccidentScreen() {
           Alert.alert('Error', 'Please upload at least one form image');
           return;
         }
-        await uploadImages();
+        // Don't upload images here - just move to review
+        setCurrentStep('review');
         break;
         
       case 'review':
@@ -117,9 +118,13 @@ export default function CreateAccidentScreen() {
     }
   };
 
-  const createReport = async () => {
+  const submitReport = async () => {
     try {
-      setLoading(true);
+      setSubmitting(true);
+      
+      console.log('Creating accident report...');
+      
+      // Step 1: Create the accident report
       const result = await createAccidentReport({
         vehicle_id: selectedVehicle,
         accident_type: selectedType!,
@@ -133,62 +138,50 @@ export default function CreateAccidentScreen() {
         police_report_no: policeReportNo || undefined,
       });
 
-      if (result.success && result.reportId) {
-        setReportId(result.reportId);
-        setCurrentStep('photos');
-      } else {
+      if (!result.success || !result.reportId) {
         Alert.alert('Error', result.error || 'Failed to create report');
+        return;
       }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to create report');
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const uploadImages = async () => {
-    if (!reportId) return;
-    
-    try {
-      setLoading(true);
+      console.log('Report created with ID:', result.reportId);
+
+      // Step 2: Upload all images
       const allImages = [
         ...form1Images.map((uri, index) => ({ uri, type: 'form1' as const, order: index })),
         ...form2Images.map((uri, index) => ({ uri, type: 'form2' as const, order: index })),
         ...accidentPhotos.map((uri, index) => ({ uri, type: 'accident_photo' as const, order: index })),
       ];
 
-      for (const image of allImages) {
-        const result = await uploadAccidentImage(reportId, image.uri, image.type, image.order);
-        if (!result.success) {
-          throw new Error(result.error);
+      console.log(`Uploading ${allImages.length} images...`);
+
+      for (let i = 0; i < allImages.length; i++) {
+        const image = allImages[i];
+        console.log(`Uploading image ${i + 1}/${allImages.length}: ${image.type}`);
+        
+        const uploadResult = await uploadAccidentImage(result.reportId, image.uri, image.type, image.order);
+        if (!uploadResult.success) {
+          console.error(`Failed to upload image ${i + 1}:`, uploadResult.error);
+          Alert.alert('Upload Error', `Failed to upload image ${i + 1}: ${uploadResult.error}`);
+          return;
         }
       }
 
-      setCurrentStep('review');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to upload images');
-    } finally {
-      setLoading(false);
-    }
-  };
+      console.log('All images uploaded successfully');
 
-  const submitReport = async () => {
-    if (!reportId) return;
-    
-    try {
-      setSubmitting(true);
-      const result = await submitAccidentReport(reportId);
+      // Step 3: Submit the report
+      const submitResult = await submitAccidentReport(result.reportId);
       
-      if (result.success) {
+      if (submitResult.success) {
         Alert.alert(
-          'Success',
+          'Success! 🎉',
           'Your accident report has been submitted successfully. An admin will review it soon.',
           [{ text: 'OK', onPress: () => router.replace('/(dashboard)/accident') }]
         );
       } else {
-        Alert.alert('Error', result.error || 'Failed to submit report');
+        Alert.alert('Error', submitResult.error || 'Failed to submit report');
       }
     } catch (error) {
+      console.error('Error in submitReport:', error);
       Alert.alert('Error', 'Failed to submit report');
     } finally {
       setSubmitting(false);
@@ -385,7 +378,7 @@ export default function CreateAccidentScreen() {
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>Upload Photos</Text>
-            <Text style={styles.stepDescription}>Upload accident forms and photos of the scene</Text>
+            <Text style={styles.stepDescription}>Take or select photos of accident forms and the scene</Text>
             
             <PhotoCapture
               imageType="form1"
@@ -454,7 +447,7 @@ export default function CreateAccidentScreen() {
             <View style={styles.reviewSection}>
               <Text style={styles.reviewSectionTitle}>Images</Text>
               <Text style={styles.reviewText}>
-                {form1Images.length + form2Images.length + accidentPhotos.length} images uploaded
+                {form1Images.length + form2Images.length + accidentPhotos.length} images ready to upload
               </Text>
             </View>
           </View>
@@ -491,7 +484,7 @@ export default function CreateAccidentScreen() {
             <LoadingIndicator size="small" color={colors.background} message="" />
           ) : (
             <Text style={styles.nextButtonText}>
-              {currentStep === 'review' ? 'Submit' : 'Next'}
+              {currentStep === 'review' ? 'Submit Report' : 'Next'}
             </Text>
           )}
         </TouchableOpacity>
