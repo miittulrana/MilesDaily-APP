@@ -52,7 +52,8 @@ export default function DashboardScreen() {
     }
   };
 
-  const navigateToModule = (module: string) => {
+
+const navigateToModule = (module: string) => {
     if (module === 'profile') {
       router.push('/(dashboard)/profile');
     } else if (module === 'fuel') {
@@ -106,9 +107,9 @@ export default function DashboardScreen() {
             onPress={() => navigateToModule('fuel')}
           />
           <ModuleCard
-            title="Wash Schedule"
-            description="View and complete vehicle wash tasks"
-            iconName="car"
+            title="Wash"
+            description="View and complete vehicle wash schedules"
+            iconName="car-outline"
             onPress={() => navigateToModule('wash')}
           />
           <ModuleCard

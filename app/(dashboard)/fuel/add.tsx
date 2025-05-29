@@ -16,11 +16,10 @@ import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { getDriverInfo } from '../../../lib/auth';
 import { useFuelPrice } from '../../../lib/hooks';
-import { createFuelRecord } from '../../../lib/fuelService';
+import { createFuelRecord, getAssignedVehicle } from '../../../lib/fuelService';
 import { DriverInfo } from '../../../utils/types';
 import { parseFloatSafe } from '../../../utils/numberUtils';
 import { validateFuelRecordForm } from '../../../utils/validators';
-import { supabase } from '../../../lib/supabase';
 
 export default function AddFuelScreen() {
   const router = useRouter();
@@ -44,29 +43,8 @@ export default function AddFuelScreen() {
         setDriver(driverData);
         
         if (driverData?.id) {
-          try {
-            const vehicleResponse = await fetch(`https://fleet.milesxp.com/api/drivers/${driverData.id}/vehicle`);
-            if (vehicleResponse.ok) {
-              const vehicleData = await vehicleResponse.json();
-              if (vehicleData) {
-                setVehicle(vehicleData);
-              }
-            } else {
-              throw new Error('Web API vehicle fetch failed');
-            }
-          } catch (apiError) {
-            console.error('Error fetching from API, falling back to local DB:', apiError);
-            const { data: localVehicle } = await supabase
-              .from('vehicles')
-              .select('*')
-              .eq('driver_id', driverData.id)
-              .eq('status', 'assigned')
-              .single();
-              
-            if (localVehicle) {
-              setVehicle(localVehicle);
-            }
-          }
+          const vehicleData = await getAssignedVehicle(driverData.id);
+          setVehicle(vehicleData);
         }
       } catch (error) {
         console.error('Error loading driver info:', error);
@@ -136,37 +114,8 @@ const handleSubmit = async () => {
       return;
     }
     
-    // Don't wait for alert, navigate immediately
     setSubmitting(false);
-    
-    // Try different navigation approaches in sequence
-    try {
-      // Method 1: Direct replacement
-      router.replace('/(dashboard)/fuel');
-      
-      // If we're still here after a moment, try method 2
-      setTimeout(() => {
-        try {
-          router.navigate('/(dashboard)/fuel');
-        } catch (navError) {
-          console.error('Navigation error:', navError);
-          // Last resort - use Alert
-          Alert.alert(
-            'Success',
-            'Fuel record added successfully. Please go back to view records.',
-            [{ text: 'OK' }]
-          );
-        }
-      }, 300);
-    } catch (navError) {
-      console.error('Initial navigation error:', navError);
-      // Fallback
-      Alert.alert(
-        'Success',
-        'Fuel record added successfully. Please go back to view records.',
-        [{ text: 'OK' }]
-      );
-    }
+    router.replace('/(dashboard)/fuel');
   } catch (error) {
     console.error('Error submitting fuel record:', error);
     Alert.alert('Error', 'An unexpected error occurred');
@@ -330,10 +279,6 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     marginBottom: layouts.spacing.lg,
-  },
-  notesInput: {
-    minHeight: 80,
-    textAlignVertical: 'top',
   },
   buttonsContainer: {
     flexDirection: 'row',

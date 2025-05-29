@@ -26,23 +26,25 @@ export const getFuelRecords = async (driverId: string): Promise<FuelRecord[]> =>
 
 export const getAllFuelRecords = async (driverId: string, vehicleId: string): Promise<FuelRecord[]> => {
   try {
-    const response = await fetch(`https://fleet.milesxp.com/api/fuel?vehicleId=${vehicleId}&pageSize=100`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
+    const { data, error } = await supabase
+      .from('fuel_records')
+      .select(`
+        *,
+        vehicle:vehicles(license_plate, brand, model, type)
+      `)
+      .eq('vehicle_id', vehicleId)
+      .order('created_at', { ascending: false })
+      .limit(100);
     
-    if (!response.ok) {
-      throw new Error(`Failed to fetch fuel records: ${response.status}`);
+    if (error) {
+      console.error('Error fetching all fuel records:', error);
+      return [];
     }
     
-    const result = await response.json();
-    return result.data || [];
+    return data || [];
   } catch (error) {
-    console.error('Error fetching all fuel records:', error);
-    
-    return getFuelRecords(driverId);
+    console.error('Error in getAllFuelRecords:', error);
+    return [];
   }
 };
 
@@ -69,21 +71,6 @@ export const getAssignedVehicle = async (driverId: string): Promise<Vehicle | nu
 
 export const getCurrentFuelPrice = async (fuelType: string): Promise<number> => {
   try {
-    const response = await fetch(`https://fleet.milesxp.com/api/fuel/prices`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (response.ok) {
-      const prices = await response.json();
-      const currentPrice = prices.find((price: any) => price.fuel_type === fuelType);
-      if (currentPrice) {
-        return currentPrice.price_per_liter;
-      }
-    }
-    
     const { data, error } = await supabase
       .from('fuel_prices')
       .select('price_per_liter')
@@ -118,30 +105,6 @@ export const createFuelRecord = async (
     
     const liters = formData.amount_euros / fuelPrice;
     
-    try {
-      const response = await fetch('https://fleet.milesxp.com/api/fuel/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          vehicle_id: formData.vehicle_id,
-          driver_id: driverId,
-          amount_euros: formData.amount_euros,
-          current_km: formData.current_km,
-          is_manual_entry: false
-        }),
-        timeout: 10000
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        return { success: true, record: data };
-      }
-    } catch (error) {
-      console.error('API error, falling back to local database:', error);
-    }
-    
     const { data, error } = await supabase
       .from('fuel_records')
       .insert({
@@ -153,7 +116,10 @@ export const createFuelRecord = async (
         created_by: driverId,
         is_manual_entry: false
       })
-      .select()
+      .select(`
+        *,
+        vehicle:vehicles(license_plate, brand, model, type)
+      `)
       .single();
     
     if (error) {
@@ -173,60 +139,52 @@ export const createFuelRecord = async (
 
 export const fetchVehicleStats = async (vehicleId: string): Promise<FuelStats | null> => {
   try {
-    const response = await fetch(`https://fleet.milesxp.com/api/fuel/stats?vehicleId=${vehicleId}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
+    const { data, error } = await supabase
+      .from('vehicle_fuel_stats')
+      .select('*')
+      .eq('vehicle_id', vehicleId)
+      .single();
     
-    if (!response.ok) {
-      throw new Error(`Failed to fetch vehicle stats: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    if (!data || !data.stats || data.stats.length === 0) {
-      return null;
-    }
-    
-    const vehicleStat = data.stats.find((stat: any) => stat.vehicle_id === vehicleId);
-    if (!vehicleStat) {
-      return null;
-    }
-    
-    return {
-      total_spent_euros: vehicleStat.total_spent_euros || 0,
-      total_liters: vehicleStat.total_liters || 0,
-      total_distance_km: vehicleStat.total_distance_km || 0,
-      record_count: vehicleStat.record_count || 0,
-      avg_consumption_per_100km: vehicleStat.avg_consumption_per_100km || 0,
-      last_km_reading: vehicleStat.last_km_reading || 0
-    };
-  } catch (error) {
-    console.error('Error fetching vehicle stats from web API:', error);
-    
-    try {
-      const { data, error: dbError } = await supabase
-        .from('vehicle_fuel_stats')
-        .select('*')
+    if (error) {
+      const { data: records, error: recordsError } = await supabase
+        .from('fuel_records')
+        .select('amount_euros, liters, current_km')
         .eq('vehicle_id', vehicleId)
-        .single();
+        .order('created_at', { ascending: true });
       
-      if (dbError) {
+      if (recordsError || !records || records.length === 0) {
         return null;
       }
       
+      const totalSpent = records.reduce((sum, record) => sum + record.amount_euros, 0);
+      const totalLiters = records.reduce((sum, record) => sum + (record.liters || 0), 0);
+      const firstReading = records[0]?.current_km || 0;
+      const lastReading = records[records.length - 1]?.current_km || 0;
+      const totalDistance = lastReading - firstReading;
+      const avgConsumption = totalDistance > 0 && totalLiters > 0 
+        ? (totalLiters / totalDistance) * 100 
+        : 0;
+      
       return {
-        total_spent_euros: data.total_spent_euros || 0,
-        total_liters: data.total_liters || 0,
-        total_distance_km: data.total_distance_km || 0,
-        record_count: data.record_count || 0,
-        avg_consumption_per_100km: data.avg_consumption_per_100km || 0,
-        last_km_reading: data.last_km_reading || 0
+        total_spent_euros: totalSpent,
+        total_liters: totalLiters,
+        total_distance_km: totalDistance,
+        record_count: records.length,
+        avg_consumption_per_100km: avgConsumption,
+        last_km_reading: lastReading
       };
-    } catch (dbError) {
-      console.error('Error fetching stats from local database:', dbError);
-      return null;
     }
+    
+    return {
+      total_spent_euros: data.total_spent_euros || 0,
+      total_liters: data.total_liters || 0,
+      total_distance_km: data.total_distance_km || 0,
+      record_count: data.record_count || 0,
+      avg_consumption_per_100km: data.avg_consumption_per_100km || 0,
+      last_km_reading: data.last_km_reading || 0
+    };
+  } catch (error) {
+    console.error('Error fetching vehicle stats:', error);
+    return null;
   }
 };
