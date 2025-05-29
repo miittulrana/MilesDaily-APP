@@ -14,6 +14,7 @@ export const layouts = {
     lg: 24,
     xl: 32,
     xxl: 48,
+    xxxl: 64,
   },
   borderRadius: {
     xs: 4,
@@ -21,6 +22,7 @@ export const layouts = {
     md: 12,
     lg: 16,
     xl: 24,
+    xxl: 32,
     full: 9999,
   },
   fontSize: {

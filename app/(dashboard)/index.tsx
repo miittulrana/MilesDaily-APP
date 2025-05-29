@@ -1,3 +1,4 @@
+// app/(dashboard)/index.tsx
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -51,11 +52,14 @@ export default function DashboardScreen() {
     }
   };
 
-  const navigateToModule = (module: string) => {
+
+const navigateToModule = (module: string) => {
     if (module === 'profile') {
       router.push('/(dashboard)/profile');
     } else if (module === 'fuel') {
       router.push('/(dashboard)/fuel');
+    } else if (module === 'wash') {
+      router.push('/(dashboard)/wash');
     }
   };
 
@@ -101,6 +105,12 @@ export default function DashboardScreen() {
             description="Record and track fuel expenses"
             iconName="water"
             onPress={() => navigateToModule('fuel')}
+          />
+          <ModuleCard
+            title="Wash"
+            description="View and complete vehicle wash schedules"
+            iconName="car-outline"
+            onPress={() => navigateToModule('wash')}
           />
           <ModuleCard
             title="Profile"

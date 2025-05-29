@@ -1,3 +1,4 @@
+// app/(dashboard)/_layout.tsx
 import { Stack } from 'expo-router';
 import { colors } from '../../constants/Colors';
 import Header from '../../components/Header';
@@ -39,6 +40,13 @@ export default function DashboardLayout() {
           headerShown: true,
           title: 'Add Fuel Record',
           presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="wash/index"
+        options={{
+          headerShown: true,
+          title: 'Wash Schedule',
         }}
       />
     </Stack>

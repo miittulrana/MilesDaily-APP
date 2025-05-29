@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import ErrorMessage from '../../../components/ErrorMessage';
 import FuelRecordCard from '../../../components/fuel/FuelRecordCard';
@@ -8,7 +8,7 @@ import LoadingIndicator from '../../../components/LoadingIndicator';
 import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { getDriverInfo } from '../../../lib/auth';
-import { getAllFuelRecords } from '../../../lib/fuelService';
+import { getAllFuelRecords, getAssignedVehicle } from '../../../lib/fuelService';
 import { DriverInfo, FuelRecord } from '../../../utils/types';
 import { supabase } from '../../../lib/supabase';
 
@@ -29,29 +29,8 @@ export default function FuelRecordsScreen() {
         setDriver(driverData);
         
         if (driverData?.id) {
-          try {
-            const vehicleResponse = await fetch(`https://fleet.milesxp.com/api/drivers/${driverData.id}/vehicle`);
-            if (vehicleResponse.ok) {
-              const vehicleData = await vehicleResponse.json();
-              if (vehicleData) {
-                setVehicle(vehicleData);
-              }
-            } else {
-              throw new Error('Web API vehicle fetch failed');
-            }
-          } catch (apiError) {
-            console.error('Error fetching from API, falling back to local DB:', apiError);
-            const { data: localVehicle } = await supabase
-              .from('vehicles')
-              .select('*')
-              .eq('driver_id', driverData.id)
-              .eq('status', 'assigned')
-              .single();
-              
-            if (localVehicle) {
-              setVehicle(localVehicle);
-            }
-          }
+          const vehicleData = await getAssignedVehicle(driverData.id);
+          setVehicle(vehicleData);
         }
       } catch (error) {
         console.error('Error loading driver info:', error);
@@ -79,6 +58,56 @@ export default function FuelRecordsScreen() {
       }
     }
   }, [driver, vehicle]);
+
+  // Setup realtime listener for fuel records
+  useEffect(() => {
+    if (!vehicle?.id) return;
+
+    let isSubscribed = true;
+    const channelName = `fuel-records-${vehicle.id}`;
+    
+    // Remove any existing channel with the same name first
+    const existingChannels = supabase.getChannels();
+    existingChannels.forEach(channel => {
+      if (channel.topic === `realtime:${channelName}`) {
+        supabase.removeChannel(channel);
+      }
+    });
+
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'fuel_records',
+          filter: `vehicle_id=eq.${vehicle.id}`
+        },
+        (payload) => {
+          if (!isSubscribed) return;
+          
+          console.log('Fuel record changed:', payload);
+          // Refresh records when changes occur
+          if (driver?.id && vehicle?.id) {
+            getAllFuelRecords(driver.id, vehicle.id).then(data => {
+              if (isSubscribed) {
+                setRecords(data);
+              }
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      isSubscribed = false;
+      if (channel) {
+        channel.unsubscribe();
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [vehicle?.id]); // Only depend on vehicle ID
 
   useFocusEffect(
     useCallback(() => {

@@ -3,6 +3,7 @@ import { colors } from '../../constants/Colors';
 import { FuelRecord } from '../../utils/types';
 import { formatDateTime } from '../../utils/dateUtils';
 import { formatCurrency, formatDistance } from '../../utils/numberUtils';
+import { layouts } from '../../constants/layouts';
 
 type FuelRecordCardProps = {
   record: FuelRecord;
@@ -22,6 +23,7 @@ export default function FuelRecordCard({ record, onPress, showManualTag = false 
       style={styles.container} 
       onPress={handlePress}
       disabled={!onPress}
+      activeOpacity={0.8}
     >
       <View style={styles.header}>
         <Text style={styles.amount}>{formatCurrency(record.amount_euros)}</Text>
@@ -30,20 +32,12 @@ export default function FuelRecordCard({ record, onPress, showManualTag = false 
       
       <View style={styles.details}>
         <View style={styles.row}>
-          <Text style={styles.label}>Vehicle:</Text>
-          <Text style={styles.value}>
-            {record.vehicle?.license_plate} {record.vehicle?.brand} {record.vehicle?.model}
-          </Text>
-        </View>
-        
-        <View style={styles.row}>
-          <Text style={styles.label}>Odometer:</Text>
+          <Text style={styles.label}>Current Km</Text>
           <Text style={styles.value}>{formatDistance(record.current_km)}</Text>
         </View>
         
         {record.notes && (
           <View style={styles.notesContainer}>
-            <Text style={styles.notesLabel}>Notes:</Text>
             <Text style={styles.notes}>{record.notes}</Text>
           </View>
         )}
@@ -51,7 +45,7 @@ export default function FuelRecordCard({ record, onPress, showManualTag = false 
       
       {showManualTag && record.is_manual_entry && (
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>Admin Entry</Text>
+          <Text style={styles.badgeText}>Admin</Text>
         </View>
       )}
     </TouchableOpacity>
@@ -61,66 +55,65 @@ export default function FuelRecordCard({ record, onPress, showManualTag = false 
 const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 16,
-    marginVertical: 8,
+    borderRadius: layouts.borderRadius.lg,
+    padding: layouts.spacing.lg,
+    marginBottom: layouts.spacing.md,
     borderWidth: 1,
     borderColor: colors.gray200,
     shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
-    paddingBottom: 12,
+    marginBottom: layouts.spacing.md,
+    paddingBottom: layouts.spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray200,
   },
   amount: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: colors.primary,
   },
   date: {
     fontSize: 14,
-    color: colors.gray500,
+    color: colors.textLight,
+    fontWeight: '500',
   },
   details: {
-    gap: 8,
+    gap: layouts.spacing.sm,
   },
   row: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
   label: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '500',
-    color: colors.gray600,
-    width: 80,
+    color: colors.textLight,
   },
   value: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.text,
-    flex: 1,
+    fontWeight: '600',
   },
   notesContainer: {
-    marginTop: 8,
-  },
-  notesLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.gray600,
-    marginBottom: 4,
+    marginTop: layouts.spacing.sm,
+    paddingTop: layouts.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray200,
   },
   notes: {
     fontSize: 14,
     color: colors.text,
     fontStyle: 'italic',
+    lineHeight: 18,
   },
   badge: {
     position: 'absolute',
@@ -129,7 +122,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.warning,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderTopRightRadius: 12,
+    borderTopRightRadius: layouts.borderRadius.lg,
     borderBottomLeftRadius: 8,
   },
   badgeText: {
