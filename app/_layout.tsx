@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { LocationTaskManager } from '../lib/locationTaskManager';
+import { notificationService } from '../lib/notificationService';
+import * as Notifications from 'expo-notifications';
 import '../tasks/locationTask';
 
 export default function RootLayout() {
@@ -15,6 +17,9 @@ export default function RootLayout() {
   useEffect(() => {
     const initializeApp = async () => {
       try {
+        await notificationService.initializeNotifications();
+        console.log('Notification service initialized in root layout');
+        
         await LocationTaskManager.initializeLocationTracking();
         
         const { data, error } = await supabase.auth.getSession();
@@ -47,13 +52,44 @@ export default function RootLayout() {
         }, 2000);
       } else if (event === 'SIGNED_OUT') {
         await LocationTaskManager.stopLocationTracking();
+        await notificationService.stopAllWashReminders();
+        console.log('Stopped all wash reminders on sign out');
       }
     });
 
+    const responseSubscription = notificationService.addNotificationResponseReceivedListener(
+      (response) => {
+        console.log('Notification tapped:', response);
+        
+        const data = response.notification.request.content.data;
+        
+        if (data?.type === 'wash_reminder' && data?.action === 'complete_wash') {
+          if (isSignedIn) {
+            console.log('Navigating to wash screen from notification');
+            router.push('/(dashboard)/wash');
+          }
+        }
+      }
+    );
+
+    const receivedSubscription = notificationService.addNotificationReceivedListener(
+      (notification) => {
+        console.log('Notification received while app open:', notification);
+        
+        const data = notification.request.content.data;
+        
+        if (data?.type === 'wash_reminder') {
+          console.log('Wash reminder received:', data);
+        }
+      }
+    );
+
     return () => {
       authListener.subscription.unsubscribe();
+      responseSubscription.remove();
+      receivedSubscription.remove();
     };
-  }, []);
+  }, [isSignedIn, router]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -67,6 +103,24 @@ export default function RootLayout() {
       router.replace('/(dashboard)');
     }
   }, [isSignedIn, isLoading, segments, router]);
+
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: string) => {
+      console.log('App state changed to:', nextAppState);
+      
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        console.log('App backgrounded - wash reminders continue');
+      } else if (nextAppState === 'active') {
+        console.log('App foregrounded');
+      }
+    };
+
+    console.log('App state change handler set up');
+
+    return () => {
+      console.log('App state change handler cleaned up');
+    };
+  }, []);
 
   if (isLoading) {
     return null;

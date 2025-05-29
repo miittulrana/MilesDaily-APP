@@ -14,6 +14,7 @@ Notifications.setNotificationHandler({
 export class NotificationService {
   private static instance: NotificationService;
   private expoPushToken: string | null = null;
+  private washReminderIntervals: Map<string, NodeJS.Timeout> = new Map();
 
   static getInstance(): NotificationService {
     if (!NotificationService.instance) {
@@ -107,16 +108,105 @@ export class NotificationService {
     }
   }
 
-  async cancelWashReminder(scheduleId: string): Promise<void> {
+  async startWashReminders(
+    scheduleId: string,
+    vehicleInfo: { license_plate: string; brand: string; model: string }
+  ): Promise<void> {
     try {
+      console.log('Starting wash reminders for schedule:', scheduleId);
+      
+      this.stopWashReminders(scheduleId);
+
+      await this.sendWashReminderNotification(scheduleId, vehicleInfo);
+
+      const intervalId = setInterval(async () => {
+        try {
+          await this.sendWashReminderNotification(scheduleId, vehicleInfo);
+        } catch (error) {
+          console.error('Error sending recurring wash reminder:', error);
+        }
+      }, 30 * 60 * 1000); 
+
+      this.washReminderIntervals.set(scheduleId, intervalId);
+      
+      console.log('Wash reminders started for schedule:', scheduleId);
+    } catch (error) {
+      console.error('Error starting wash reminders:', error);
+    }
+  }
+
+  private async sendWashReminderNotification(
+    scheduleId: string,
+    vehicleInfo: { license_plate: string; brand: string; model: string }
+  ): Promise<void> {
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'MilesXP Daily - Wash Scheduled for Today',
+          body: 'Complete it to avoid Notifications',
+          data: {
+            type: 'wash_reminder',
+            schedule_id: scheduleId,
+            vehicle_info: vehicleInfo,
+            action: 'complete_wash'
+          },
+          sound: 'default',
+        },
+        trigger: null,
+      });
+    } catch (error) {
+      console.error('Error sending wash reminder notification:', error);
+    }
+  }
+
+  async stopWashReminders(scheduleId: string): Promise<void> {
+    try {
+      const intervalId = this.washReminderIntervals.get(scheduleId);
+      if (intervalId) {
+        clearInterval(intervalId);
+        this.washReminderIntervals.delete(scheduleId);
+        console.log('Stopped wash reminders for schedule:', scheduleId);
+      }
+
       const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-      const washReminder = scheduled.find(
+      const washReminders = scheduled.filter(
         notification => notification.content.data?.schedule_id === scheduleId
       );
 
-      if (washReminder) {
-        await Notifications.cancelScheduledNotificationAsync(washReminder.identifier);
+      for (const reminder of washReminders) {
+        await Notifications.cancelScheduledNotificationAsync(reminder.identifier);
       }
+    } catch (error) {
+      console.error('Error stopping wash reminders:', error);
+    }
+  }
+
+  async stopAllWashReminders(): Promise<void> {
+    try {
+      for (const [scheduleId, intervalId] of this.washReminderIntervals.entries()) {
+        clearInterval(intervalId);
+        console.log('Cleared interval for schedule:', scheduleId);
+      }
+      this.washReminderIntervals.clear();
+
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const washReminders = scheduled.filter(
+        notification => notification.content.data?.type === 'wash_reminder'
+      );
+
+      for (const reminder of washReminders) {
+        await Notifications.cancelScheduledNotificationAsync(reminder.identifier);
+      }
+
+      console.log('Stopped all wash reminders');
+    } catch (error) {
+      console.error('Error stopping all wash reminders:', error);
+    }
+  }
+
+  async cancelWashReminder(scheduleId: string): Promise<void> {
+    try {
+      await this.stopWashReminders(scheduleId);
     } catch (error) {
       console.error('Error canceling wash reminder:', error);
     }

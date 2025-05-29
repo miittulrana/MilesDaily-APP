@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { notificationService } from './notificationService';
 
 export type WashSchedule = {
   id: string;
@@ -28,143 +29,226 @@ export type WashScheduleResponse = {
 
 export const getTodayWashSchedule = async (): Promise<WashScheduleResponse> => {
   try {
-    // Get current session and token
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { user } } = await supabase.auth.getUser();
     
-    if (!session?.access_token) {
-      throw new Error('No authentication token found');
+    if (!user) {
+      throw new Error('User not authenticated');
     }
 
-    // Call our driver API endpoint
-    const response = await fetch('https://fleet.milesxp.com/api/drivers/wash-schedule', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`
+    const today = new Date().toISOString().split('T')[0];
+    
+    const { data: schedules, error } = await supabase
+      .from('wash_schedules')
+      .select(`
+        *,
+        vehicle:vehicles(
+          id,
+          license_plate,
+          brand,
+          model,
+          type
+        )
+      `)
+      .eq('driver_id', user.id)
+      .eq('scheduled_date', today);
+    
+    if (error) {
+      throw error;
+    }
+    
+    const response = {
+      schedules: schedules || [],
+      date: today,
+      has_wash_today: schedules && schedules.length > 0
+    };
+
+    if (response.has_wash_today && schedules) {
+      for (const schedule of schedules) {
+        if (schedule.status === 'pending' && schedule.vehicle) {
+          try {
+            await notificationService.startWashReminders(schedule.id, {
+              license_plate: schedule.vehicle.license_plate,
+              brand: schedule.vehicle.brand,
+              model: schedule.vehicle.model
+            });
+          } catch (notificationError) {
+            console.error('Error starting wash reminders:', notificationError);
+          }
+        }
       }
-    });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
     }
-
-    const data = await response.json();
-    return data;
+    
+    return response;
   } catch (error) {
     console.error('Error fetching today wash schedule:', error);
-    
-    // Fallback: try direct Supabase query
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
-
-      const today = new Date().toISOString().split('T')[0];
-      
-      const { data: schedules, error } = await supabase
-        .from('wash_schedules')
-        .select(`
-          *,
-          vehicle:vehicles(
-            id,
-            license_plate,
-            brand,
-            model,
-            type
-          )
-        `)
-        .eq('driver_id', user.id)
-        .eq('scheduled_date', today);
-      
-      if (error) {
-        throw error;
-      }
-      
-      return {
-        schedules: schedules || [],
-        date: today,
-        has_wash_today: schedules && schedules.length > 0
-      };
-    } catch (fallbackError) {
-      console.error('Fallback query also failed:', fallbackError);
-      
-      // Return empty result if both methods fail
-      return {
-        schedules: [],
-        date: new Date().toISOString().split('T')[0],
-        has_wash_today: false
-      };
-    }
+    return {
+      schedules: [],
+      date: new Date().toISOString().split('T')[0],
+      has_wash_today: false
+    };
   }
-}; // <-- This closing brace was missing!
+};
 
-export const completeWash = async (scheduleId: string, imageUri: string): Promise<boolean> => {
+export const completeWashByDriver = async (completionData: {
+  schedule_id: string;
+  image_uri: string;
+  notes?: string;
+}): Promise<boolean> => {
   try {
-    // Get current session and token
-    const { data: { session } } = await supabase.auth.getSession();
+    console.log('Starting wash completion process...');
+    console.log('Schedule ID:', completionData.schedule_id);
+    console.log('Image URI:', completionData.image_uri);
     
-    if (!session?.access_token) {
-      throw new Error('No authentication token found');
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      throw new Error('User not authenticated');
     }
 
-    // Create FormData for image upload
-    const formData = new FormData();
-    formData.append('schedule_id', scheduleId);
-    
-    // Append image file
-    formData.append('image', {
-      uri: imageUri,
-      type: 'image/jpeg',
-      name: `wash_${scheduleId}_${Date.now()}.jpg`,
-    } as any);
+    const { data: schedule, error: scheduleError } = await supabase
+      .from('wash_schedules')
+      .select('*')
+      .eq('id', completionData.schedule_id)
+      .eq('driver_id', user.id)
+      .single();
 
-    // Call the driver completion API
-    const response = await fetch('https://fleet.milesxp.com/api/wash-schedule/driver-complete', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`
-      },
-      body: formData
-    });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+    if (scheduleError || !schedule) {
+      throw new Error('Wash schedule not found or access denied');
     }
 
-    const result = await response.json();
+    if (schedule.status === 'completed') {
+      throw new Error('Wash schedule is already completed');
+    }
+
+    console.log('Uploading image to Supabase Storage...');
+    
+    const fileUri = completionData.image_uri;
+    let imageData: ArrayBuffer;
+    
+    try {
+      const response = await fetch(fileUri);
+      imageData = await response.arrayBuffer();
+    } catch (fetchError) {
+      console.error('Failed to read image file:', fetchError);
+      throw new Error('Failed to read image file');
+    }
+    
+    const fileExt = 'jpg';
+    const fileName = `wash_${completionData.schedule_id}_${Date.now()}.${fileExt}`;
+    
+    console.log('Uploading file:', fileName, 'Size:', imageData.byteLength);
+    
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('wash')
+      .upload(fileName, imageData, {
+        contentType: 'image/jpeg',
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('Image upload error:', uploadError);
+      throw new Error(`Failed to upload image: ${uploadError.message}`);
+    }
+
+    console.log('Image uploaded successfully:', uploadData.path);
+
+    const { data: publicUrlData } = supabase.storage
+      .from('wash')
+      .getPublicUrl(uploadData.path);
+
+    const imageUrl = publicUrlData.publicUrl;
+    console.log('Image public URL:', imageUrl);
+
+    const { data: updatedSchedule, error: updateError } = await supabase
+      .from('wash_schedules')
+      .update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        completed_by_type: 'driver',
+        completed_by_user_id: user.id,
+        image_url: imageUrl,
+        notes: completionData.notes || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', completionData.schedule_id)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Update error:', updateError);
+      
+      await supabase.storage
+        .from('wash')
+        .remove([uploadData.path]);
+      
+      throw new Error(`Failed to update wash schedule: ${updateError.message}`);
+    }
+
+    console.log('Wash completion successful:', updatedSchedule);
+
+    try {
+      await notificationService.stopWashReminders(completionData.schedule_id);
+      console.log('Stopped wash reminders for completed schedule:', completionData.schedule_id);
+    } catch (notificationError) {
+      console.error('Error stopping wash reminders:', notificationError);
+    }
+
     return true;
   } catch (error) {
-    console.error('Error completing wash:', error);
-    
-    // Fallback: try direct Supabase update
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
+    console.error('Error in completeWashByDriver:', error);
+    throw error;
+  }
+};
 
-      // Update wash schedule status directly
-      const { error } = await supabase
-        .from('wash_schedules')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          completed_by_type: 'driver',
-          completed_by_user_id: user.id
-        })
-        .eq('id', scheduleId);
-      
-      if (error) {
-        throw error;
-      }
-      
-      return true;
-    } catch (fallbackError) {
-      console.error('Fallback update also failed:', fallbackError);
-      return false;
+export const completeWash = async (scheduleId: string, imageUri: string): Promise<boolean> => {
+  const result = await completeWashByDriver({
+    schedule_id: scheduleId,
+    image_uri: imageUri
+  });
+
+  if (result) {
+    try {
+      await notificationService.stopWashReminders(scheduleId);
+    } catch (notificationError) {
+      console.error('Error stopping wash reminders in legacy function:', notificationError);
     }
+  }
+
+  return result;
+};
+
+export const getWashScheduleById = async (scheduleId: string): Promise<WashSchedule | null> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    const { data, error } = await supabase
+      .from('wash_schedules')
+      .select(`
+        *,
+        vehicle:vehicles(
+          id,
+          license_plate,
+          brand,
+          model,
+          type
+        )
+      `)
+      .eq('id', scheduleId)
+      .eq('driver_id', user.id)
+      .single();
+
+    if (error) {
+      console.error('Error fetching wash schedule:', error);
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in getWashScheduleById:', error);
+    return null;
   }
 };

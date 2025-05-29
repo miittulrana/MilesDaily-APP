@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View, RefreshControl, ScrollView, Image, Alert } from 'react-native';
 import LoadingIndicator from '../../../components/LoadingIndicator';
 import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { getTodayWashSchedule, WashScheduleResponse, completeWash } from '../../../lib/washService';
 import { showImagePickerOptions, ImagePickerResult } from '../../../components/ImagePicker';
+import { notificationService } from '../../../lib/notificationService';
 
 export default function WashScheduleScreen() {
   const [washData, setWashData] = useState<WashScheduleResponse | null>(null);
@@ -22,6 +23,18 @@ export default function WashScheduleScreen() {
       setError(null);
       const data = await getTodayWashSchedule();
       setWashData(data);
+      
+      if (data.has_wash_today && data.schedules.length > 0) {
+        const pendingSchedules = data.schedules.filter(s => s.status === 'pending');
+        console.log('Found pending wash schedules:', pendingSchedules.length);
+        
+
+        for (const schedule of pendingSchedules) {
+          if (schedule.vehicle) {
+            console.log('Wash reminders active for:', schedule.vehicle.license_plate);
+          }
+        }
+      }
     } catch (err) {
       console.error('Error fetching wash schedule:', err);
       setError('Failed to load wash schedule');
@@ -31,13 +44,29 @@ export default function WashScheduleScreen() {
     }
   }, []);
 
-  // Load data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
       fetchWashSchedule();
     }, [fetchWashSchedule])
   );
+
+  useEffect(() => {
+    const initializeNotifications = async () => {
+      try {
+        await notificationService.initializeNotifications();
+        console.log('Notification service initialized');
+      } catch (error) {
+        console.error('Error initializing notifications:', error);
+      }
+    };
+
+    initializeNotifications();
+
+    return () => {
+      console.log('Wash screen unmounted - notifications continue in background');
+    };
+  }, []);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -48,26 +77,23 @@ export default function WashScheduleScreen() {
     try {
       setCompleting(true);
       
-      // Show image picker options
       const imageResult = await showImagePickerOptions();
       
       if (!imageResult) {
         setCompleting(false);
-        return; // User canceled
+        return; 
       }
       
       setSelectedImage(imageResult);
       console.log('Image selected:', imageResult);
       
-      // TODO: Upload image and complete wash
-      // For now, just show the selected image
       
     } catch (error) {
       console.error('Error in handleCompleteWash:', error);
     } finally {
       setCompleting(false);
     }
-  }; // <-- This closing brace was missing!
+  };
 
   const handleSubmitWash = async () => {
     if (!selectedImage || !todaySchedule) {
@@ -80,9 +106,19 @@ export default function WashScheduleScreen() {
       const success = await completeWash(todaySchedule.id, selectedImage.uri);
       
       if (success) {
-        // Clear selected image and refresh data
+        await notificationService.showImmediateNotification(
+          'Wash Completed!',
+          `Vehicle wash completed successfully. No more reminders for today.`
+        );
+
         setSelectedImage(null);
         await fetchWashSchedule();
+        
+        Alert.alert(
+          'Success!',
+          'Wash completed successfully! Notifications have been stopped.',
+          [{ text: 'OK' }]
+        );
       } else {
         Alert.alert('Error', 'Failed to complete wash. Please try again.');
       }
@@ -150,6 +186,14 @@ export default function WashScheduleScreen() {
                   <Text style={styles.statusText}>Wash Scheduled</Text>
                 </View>
                 
+                {/* NEW: Notification info */}
+                <View style={styles.notificationInfo}>
+                  <Ionicons name="notifications-outline" size={16} color={colors.info} />
+                  <Text style={styles.notificationText}>
+                    You'll receive reminders every 30 minutes until completed
+                  </Text>
+                </View>
+                
                 <Text style={styles.instructions}>
                   Your vehicle is scheduled for washing today. Please complete the wash and upload a photo.
                 </Text>
@@ -207,6 +251,14 @@ export default function WashScheduleScreen() {
                   <Ionicons name="checkmark-circle-outline" size={16} color={colors.success} />
                   <Text style={[styles.statusText, styles.statusCompletedText]}>
                     Completed
+                  </Text>
+                </View>
+                
+                {/* NEW: Completion notification info */}
+                <View style={styles.completionInfo}>
+                  <Ionicons name="notifications-off-outline" size={16} color={colors.success} />
+                  <Text style={styles.completionText}>
+                    Wash completed! Notifications stopped.
                   </Text>
                 </View>
                 
@@ -320,6 +372,36 @@ const styles = StyleSheet.create({
   },
   statusCompletedText: {
     color: colors.success,
+  },
+  notificationInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.info + '10',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: layouts.borderRadius.md,
+    marginBottom: layouts.spacing.md,
+  },
+  notificationText: {
+    fontSize: 12,
+    color: colors.info,
+    marginLeft: 6,
+    textAlign: 'center',
+  },
+  completionInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.success + '10',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: layouts.borderRadius.md,
+    marginBottom: layouts.spacing.md,
+  },
+  completionText: {
+    fontSize: 12,
+    color: colors.success,
+    marginLeft: 6,
+    textAlign: 'center',
   },
   instructions: {
     fontSize: 14,
