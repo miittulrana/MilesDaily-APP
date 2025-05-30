@@ -18,8 +18,10 @@ export default function ModuleCard({ title, iconName, onPress }: ModuleCardProps
         return '#10b981';
       case 'documents':
         return '#8b5cf6';
-      case 'accident':
+      case 'uniforms':
         return '#f59e0b';
+      case 'accident':
+        return '#ef4444';
       default:
         return colors.primary;
     }
@@ -33,8 +35,10 @@ export default function ModuleCard({ title, iconName, onPress }: ModuleCardProps
         return '#10b981' + '15';
       case 'documents':
         return '#8b5cf6' + '15';
-      case 'accident':
+      case 'uniforms':
         return '#f59e0b' + '15';
+      case 'accident':
+        return '#ef4444' + '15';
       default:
         return colors.primary + '15';
     }

@@ -81,6 +81,8 @@ const navigateToModule = (module: string) => {
   } else if (module === 'accident') {
     console.log('Going to accident screen');
     router.push('/(dashboard)/accident');
+  } else if (module === 'uniforms') {
+    router.push('/(dashboard)/uniforms');
   }
 };
 
@@ -152,10 +154,19 @@ const navigateToModule = (module: string) => {
             onPress={() => navigateToModule('documents')}
           />
           <ModuleCard
+            title="Uniforms"
+            iconName="shirt-outline"
+            onPress={() => navigateToModule('uniforms')}
+          />
+        </View>
+        
+        <View style={styles.moduleRow}>
+          <ModuleCard
             title="Accident"
             iconName="warning-outline"
             onPress={() => navigateToModule('accident')}
           />
+          <View style={styles.moduleCardPlaceholder} />
         </View>
       </View>
     </ScrollView>
@@ -254,5 +265,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: layouts.spacing.xl,
     gap: layouts.spacing.lg,
+  },
+  moduleCardPlaceholder: {
+    width: '48%',
   },
 });

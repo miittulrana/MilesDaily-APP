@@ -64,6 +64,41 @@ export default function DashboardLayout() {
         }}
       />
       <Stack.Screen
+        name="uniforms/index"
+        options={{
+          headerShown: true,
+          title: 'Uniforms',
+        }}
+      />
+      <Stack.Screen
+        name="uniforms/request"
+        options={{
+          headerShown: true,
+          title: 'My Requests',
+        }}
+      />
+      <Stack.Screen
+        name="uniforms/preferences"
+        options={{
+          headerShown: true,
+          title: 'Size Preferences',
+        }}
+      />
+      <Stack.Screen
+        name="uniforms/allocations"
+        options={{
+          headerShown: true,
+          title: 'My Uniforms',
+        }}
+      />
+      <Stack.Screen
+        name="uniforms/returns"
+        options={{
+          headerShown: true,
+          title: 'Return Requests',
+        }}
+      />
+      <Stack.Screen
         name="accident/index"
         options={{
           headerShown: true,
