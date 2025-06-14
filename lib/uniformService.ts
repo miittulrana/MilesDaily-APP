@@ -7,9 +7,11 @@ import {
   UniformRequest,
   DriverUniformAllocation,
   UniformReturnRequest,
+  SelfReportedUniform,
   CreateRequestData,
   CreatePreferenceData,
-  CreateReturnData
+  CreateReturnData,
+  CreateSelfReportData
 } from '../utils/uniformTypes';
 
 const API_BASE = 'https://fleet.milesxp.com/api/drivers/uniforms';
@@ -225,6 +227,47 @@ export const createUniformReturn = async (
     return data.return_request;
   } catch (error) {
     console.error('Error creating uniform return:', error);
+    throw error;
+  }
+};
+
+export const fetchSelfReportedUniforms = async (): Promise<SelfReportedUniform[]> => {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/self-report`, { headers });
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch self-reported uniforms');
+    }
+    
+    const data = await response.json();
+    return data.self_reported || [];
+  } catch (error) {
+    console.error('Error fetching self-reported uniforms:', error);
+    throw error;
+  }
+};
+
+export const createSelfReportedUniform = async (
+  reportData: CreateSelfReportData
+): Promise<SelfReportedUniform> => {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/self-report`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(reportData)
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to create self-report');
+    }
+    
+    const data = await response.json();
+    return data.self_report;
+  } catch (error) {
+    console.error('Error creating self-reported uniform:', error);
     throw error;
   }
 };

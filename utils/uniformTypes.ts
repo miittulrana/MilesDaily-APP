@@ -102,11 +102,27 @@ export interface UniformReturnRequest {
   uniform_size?: UniformSize;
 }
 
+export interface SelfReportedUniform {
+  id: string;
+  driver_id: string;
+  uniform_type_id: string;
+  uniform_size_id: string;
+  quantity_owned: number;
+  condition: 'new' | 'good' | 'worn' | 'damaged';
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+  uniform_type?: UniformType;
+  uniform_size?: UniformSize;
+}
+
 export interface CreateRequestData {
   uniform_type_id: string;
   uniform_size_id: string;
   quantity_requested: number;
   request_reason?: string;
+  return_quantity?: number;
+  return_reason?: string;
 }
 
 export interface CreatePreferenceData {
@@ -119,4 +135,12 @@ export interface CreateReturnData {
   uniform_size_id: string;
   quantity_to_return: number;
   reason?: string;
+}
+
+export interface CreateSelfReportData {
+  uniform_type_id: string;
+  uniform_size_id: string;
+  quantity_owned: number;
+  condition: 'new' | 'good' | 'worn' | 'damaged';
+  notes?: string;
 }

@@ -7,9 +7,11 @@ import {
   UniformRequest,
   DriverUniformAllocation,
   UniformReturnRequest,
+  SelfReportedUniform,
   CreateRequestData,
   CreatePreferenceData,
-  CreateReturnData
+  CreateReturnData,
+  CreateSelfReportData
 } from '../../utils/uniformTypes';
 import {
   fetchUniformTypes,
@@ -21,7 +23,9 @@ import {
   createUniformRequest,
   fetchDriverAllocations,
   fetchUniformReturns,
-  createUniformReturn
+  createUniformReturn,
+  fetchSelfReportedUniforms,
+  createSelfReportedUniform
 } from '../uniformService';
 
 export const useUniformTypes = () => {
@@ -244,5 +248,46 @@ export const useUniformReturns = () => {
     error, 
     refetch: fetchReturns,
     createReturn 
+  };
+};
+
+export const useSelfReportedUniforms = () => {
+  const [selfReported, setSelfReported] = useState<SelfReportedUniform[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchSelfReported = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await fetchSelfReportedUniforms();
+      setSelfReported(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch self-reported uniforms');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const createSelfReport = useCallback(async (reportData: CreateSelfReportData) => {
+    try {
+      const newReport = await createSelfReportedUniform(reportData);
+      setSelfReported(prev => [...prev.filter(p => !(p.uniform_type_id === reportData.uniform_type_id && p.uniform_size_id === reportData.uniform_size_id)), newReport]);
+      return newReport;
+    } catch (err) {
+      throw err;
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSelfReported();
+  }, [fetchSelfReported]);
+
+  return { 
+    selfReported, 
+    loading, 
+    error, 
+    refetch: fetchSelfReported,
+    createSelfReport 
   };
 };

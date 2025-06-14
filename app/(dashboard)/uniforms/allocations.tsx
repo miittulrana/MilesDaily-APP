@@ -1,18 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import ErrorMessage from '../../../components/ErrorMessage';
 import LoadingIndicator from '../../../components/LoadingIndicator';
 import AllocationCard from '../../../components/uniforms/AllocationCard';
 import ReturnForm from '../../../components/uniforms/ReturnForm';
+import AddOwnUniformForm from '../../../components/uniforms/AddOwnUniformForm';
 import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
-import { useDriverAllocations, useUniformReturns } from '../../../lib/hooks/useUniforms';
-import { DriverUniformAllocation, CreateReturnData } from '../../../utils/uniformTypes';
+import { useDriverAllocations, useUniformReturns, useSelfReportedUniforms } from '../../../lib/hooks/useUniforms';
+import { DriverUniformAllocation, CreateReturnData, CreateSelfReportData } from '../../../utils/uniformTypes';
 import { Alert } from 'react-native';
 
 export default function AllocationsScreen() {
   const [showReturnForm, setShowReturnForm] = useState(false);
+  const [showAddOwnForm, setShowAddOwnForm] = useState(false);
   const [selectedAllocation, setSelectedAllocation] = useState<DriverUniformAllocation | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -24,6 +26,7 @@ export default function AllocationsScreen() {
   } = useDriverAllocations();
 
   const { createReturn } = useUniformReturns();
+  const { createSelfReport } = useSelfReportedUniforms();
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -40,6 +43,16 @@ export default function AllocationsScreen() {
     try {
       await createReturn(returnData);
       Alert.alert('Success', 'Return request submitted successfully');
+      await refetchAllocations();
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const handleSubmitSelfReport = async (reportData: CreateSelfReportData) => {
+    try {
+      await createSelfReport(reportData);
+      Alert.alert('Success', 'Uniform added to your inventory');
       await refetchAllocations();
     } catch (error) {
       throw error;
@@ -64,6 +77,13 @@ export default function AllocationsScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Uniforms</Text>
+        <TouchableOpacity 
+          style={styles.addButton}
+          onPress={() => setShowAddOwnForm(true)}
+        >
+          <Ionicons name="add" size={20} color={colors.background} />
+          <Text style={styles.addButtonText}>Add Items I Have</Text>
+        </TouchableOpacity>
       </View>
 
       {allocationsError && <ErrorMessage message={allocationsError} />}
@@ -88,8 +108,14 @@ export default function AllocationsScreen() {
           <Ionicons name="shirt-outline" size={64} color={colors.gray300} />
           <Text style={styles.emptyStateTitle}>No Uniforms Allocated</Text>
           <Text style={styles.emptyStateDescription}>
-            You don&apos;t have any uniforms allocated to you yet. Submit requests to get uniforms.
+            You don&apos;t have any uniforms allocated to you yet. Submit requests to get uniforms or add items you already have.
           </Text>
+          <TouchableOpacity 
+            style={styles.emptyStateButton}
+            onPress={() => setShowAddOwnForm(true)}
+          >
+            <Text style={styles.emptyStateButtonText}>Add Items I Have</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
@@ -104,7 +130,6 @@ export default function AllocationsScreen() {
                 <AllocationCard
                   key={allocation.id}
                   allocation={allocation}
-                  onReturn={handleReturnRequest}
                 />
               ))}
             </View>
@@ -131,6 +156,12 @@ export default function AllocationsScreen() {
         }}
         onSubmit={handleSubmitReturn}
       />
+
+      <AddOwnUniformForm
+        visible={showAddOwnForm}
+        onClose={() => setShowAddOwnForm(false)}
+        onSubmit={handleSubmitSelfReport}
+      />
     </View>
   );
 }
@@ -141,6 +172,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: layouts.spacing.lg,
     paddingVertical: layouts.spacing.lg,
     backgroundColor: colors.card,
@@ -151,6 +185,21 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: colors.text,
+    flex: 1,
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: layouts.borderRadius.md,
+    gap: 4,
+  },
+  addButtonText: {
+    color: colors.background,
+    fontSize: 12,
+    fontWeight: '600',
   },
   statsContainer: {
     flexDirection: 'row',
@@ -208,5 +257,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textLight,
     textAlign: 'center',
+    marginBottom: layouts.spacing.lg,
+  },
+  emptyStateButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: layouts.borderRadius.md,
+  },
+  emptyStateButtonText: {
+    color: colors.background,
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

@@ -12,15 +12,16 @@ interface UniformCardProps {
 export default function UniformCard({ item, onPress, disabled = false }: UniformCardProps) {
   const getStockStatusColor = () => {
     if (!item.can_request) return colors.gray400;
-    if (item.available_stock === 0) return colors.error;
-    if (item.available_stock && item.available_stock <= item.minimum_stock) return colors.warning;
     return colors.success;
   };
 
   const getStockStatusText = () => {
-    if (!item.can_request) return 'Cannot Request';
-    if (item.available_stock === 0) return 'Out of Stock';
-    if (item.available_stock && item.available_stock <= item.minimum_stock) return 'Low Stock';
+    if (!item.can_request && item.driver_pending_requests && item.driver_pending_requests > 0) {
+      return 'Pending Request';
+    }
+    if (item.requires_return) {
+      return 'Return Required';
+    }
     return 'Available';
   };
 
@@ -31,7 +32,7 @@ export default function UniformCard({ item, onPress, disabled = false }: Uniform
         disabled && styles.containerDisabled
       ]} 
       onPress={() => onPress(item)}
-      disabled={disabled || !item.can_request}
+      disabled={disabled || (!item.can_request && item.driver_pending_requests! > 0)}
       activeOpacity={0.8}
     >
       <View style={styles.header}>
@@ -58,22 +59,17 @@ export default function UniformCard({ item, onPress, disabled = false }: Uniform
         </View>
         
         <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Available:</Text>
-          <Text style={styles.detailValue}>{item.available_stock}</Text>
-        </View>
-        
-        <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>You have:</Text>
           <Text style={styles.detailValue}>
             {item.driver_current_allocation}/{item.maximum_limit_per_driver}
           </Text>
         </View>
 
-        {item.max_requestable && item.max_requestable > 0 && (
+        {item.requires_return && (
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Can request:</Text>
-            <Text style={[styles.detailValue, { color: colors.primary }]}>
-              {item.max_requestable}
+            <Text style={styles.detailLabel}>Must return first:</Text>
+            <Text style={[styles.detailValue, { color: colors.warning }]}>
+              {item.min_return_needed} items
             </Text>
           </View>
         )}
@@ -163,5 +159,72 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: colors.background,
+  },
+  returnSection: {
+    backgroundColor: colors.warning + '10',
+    borderRadius: layouts.borderRadius.md,
+    padding: layouts.spacing.md,
+    marginTop: layouts.spacing.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.warning,
+  },
+  returnHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: layouts.spacing.xs,
+  },
+  returnLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.warning,
+  },
+  returnControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: layouts.spacing.sm,
+  },
+  returnButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.gray100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.gray200,
+  },
+  returnQuantity: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    minWidth: 20,
+    textAlign: 'center',
+  },
+  returnNote: {
+    fontSize: 11,
+    color: colors.text,
+    fontStyle: 'italic',
+  },
+  errorNote: {
+    fontSize: 11,
+    color: colors.error,
+    fontWeight: '500',
+    marginTop: layouts.spacing.xs,
+  },
+  actionButton: {
+    backgroundColor: colors.primary + '20',
+    borderRadius: layouts.borderRadius.md,
+    paddingVertical: layouts.spacing.sm,
+    paddingHorizontal: layouts.spacing.md,
+    marginTop: layouts.spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
   },
 });

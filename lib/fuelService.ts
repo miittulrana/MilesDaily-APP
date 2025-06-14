@@ -69,13 +69,16 @@ export const getAssignedVehicle = async (driverId: string): Promise<Vehicle | nu
   }
 };
 
-export const getCurrentFuelPrice = async (fuelType: string): Promise<number> => {
+export const getCurrentFuelPrice = async (fuelType: string, recordDate?: string): Promise<number> => {
   try {
+    const targetDate = recordDate || new Date().toISOString();
+    
     const { data, error } = await supabase
       .from('fuel_prices')
-      .select('price_per_liter')
+      .select('price_per_liter, effective_date')
       .eq('fuel_type', fuelType)
-      .order('updated_at', { ascending: false })
+      .lte('effective_date', targetDate)
+      .order('effective_date', { ascending: false })
       .limit(1)
       .single();
     
@@ -101,6 +104,26 @@ export const createFuelRecord = async (
     
     if (!vehicle) {
       return { success: false, error: 'No assigned vehicle found' };
+    }
+    
+    const { data: lastFuelRecord, error: lastRecordError } = await supabase
+      .from('fuel_records')
+      .select('current_km')
+      .eq('vehicle_id', formData.vehicle_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (lastRecordError && lastRecordError.code !== 'PGRST116') {
+      console.error('Error fetching last fuel record:', lastRecordError);
+      return { success: false, error: 'Failed to validate kilometer reading' };
+    }
+    
+    if (lastFuelRecord && formData.current_km < lastFuelRecord.current_km) {
+      return {
+        success: false,
+        error: `Current kilometers (${formData.current_km}) cannot be less than the last recorded reading (${lastFuelRecord.current_km})`
+      };
     }
     
     const liters = formData.amount_euros / fuelPrice;
