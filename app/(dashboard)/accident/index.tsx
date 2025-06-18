@@ -24,7 +24,8 @@ export default function AccidentScreen() {
       if (showLoading) setLoading(true);
       setError(null);
       const data = await getDriverAccidents();
-      setReports(data);
+      const pendingOnlyReports = data.filter(report => report.status === 'pending');
+      setReports(pendingOnlyReports);
     } catch (err) {
       setError('Failed to load accident reports');
       console.error('Error loading reports:', err);
@@ -61,6 +62,28 @@ export default function AccidentScreen() {
       case 'processed': return 'Processed';
       default: return status;
     }
+  };
+
+  const getAccidentTypeDisplay = (report: AccidentReport) => {
+    let typeDisplay = report.accident_type === 'front-to-rear' ? 'Front-to-Rear' : 'General';
+    
+    if (report.general_sub_type) {
+      switch (report.general_sub_type) {
+        case 'injury':
+          typeDisplay += ' (Injury)';
+          break;
+        case 'govt-property':
+          typeDisplay += ' (Govt. Property)';
+          break;
+        case 'private-property':
+          typeDisplay += ' (Private Property)';
+          break;
+        default:
+          typeDisplay += ` (${report.general_sub_type})`;
+      }
+    }
+    
+    return typeDisplay;
   };
 
   if (loading) {
@@ -102,15 +125,15 @@ export default function AccidentScreen() {
       {reports.length === 0 ? (
         <View style={styles.emptyState}>
           <Ionicons name="document-outline" size={64} color={colors.gray400} />
-          <Text style={styles.emptyTitle}>No Accident Reports</Text>
+          <Text style={styles.emptyTitle}>No Pending Reports</Text>
           <Text style={styles.emptyDescription}>
-            You haven't submitted any accident reports yet.
+            You don't have any accident reports pending review. Submitted reports are processed by admin.
           </Text>
           <TouchableOpacity
             style={styles.startButton}
             onPress={() => router.push('/(dashboard)/accident/create')}
           >
-            <Text style={styles.startButtonText}>Start Your First Claim</Text>
+            <Text style={styles.startButtonText}>Start New Claim</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -146,8 +169,7 @@ export default function AccidentScreen() {
                 <View style={styles.detailRow}>
                   <Ionicons name="warning-outline" size={16} color={colors.textLight} />
                   <Text style={styles.detailText}>
-                    {report.accident_type === 'front-to-rear' ? 'Front-to-Rear' : 'General'}
-                    {report.general_sub_type && ` (${report.general_sub_type.toUpperCase()})`}
+                    {getAccidentTypeDisplay(report)}
                   </Text>
                 </View>
                 {report.images && report.images.length > 0 && (

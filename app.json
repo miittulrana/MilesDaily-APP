@@ -19,11 +19,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.milesxp.daily",
       "infoPlist": {
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs location access to track work routes and ensure driver safety.",
-        "NSLocationWhenInUseUsageDescription": "This app needs location access to track work routes and ensure driver safety.",
         "NSCameraUsageDescription": "This app needs camera access to take photos of washed vehicles.",
-        "NSPhotoLibraryUsageDescription": "This app needs photo library access to select vehicle wash photos.",
-        "UIBackgroundModes": ["location", "background-fetch", "background-processing"]
+        "NSPhotoLibraryUsageDescription": "This app needs photo library access to select vehicle wash photos."
       }
     },
     "android": {
@@ -35,11 +32,6 @@
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION",
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
@@ -49,18 +41,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-router",
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "This app needs location access to track work routes and ensure driver safety.",
-          "locationWhenInUsePermission": "This app needs location access to track work routes and ensure driver safety.",
-          "locationAlwaysPermission": "This app needs location access to track work routes and ensure driver safety.",
-          "isIosBackgroundLocationEnabled": true,
-          "isAndroidBackgroundLocationEnabled": true,
-          "isAndroidForegroundServiceEnabled": true
-        }
-      ]
+      "expo-router"
     ],
     "scheme": "fleet-management",
     "extra": {

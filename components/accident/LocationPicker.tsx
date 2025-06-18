@@ -20,6 +20,7 @@ export default function LocationPicker({
 }: LocationPickerProps) {
   const [loading, setLoading] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [currentCoordinates, setCurrentCoordinates] = useState<{lat: number; lng: number} | null>(null);
 
   useEffect(() => {
     checkLocationPermission();
@@ -70,6 +71,7 @@ export default function LocationPicker({
       });
 
       const { latitude, longitude } = location.coords;
+      setCurrentCoordinates({ lat: latitude, lng: longitude });
       onLocationChange(latitude, longitude);
 
       const reverseGeocode = await Location.reverseGeocodeAsync({
@@ -131,8 +133,20 @@ export default function LocationPicker({
         containerStyle={styles.addressInput}
       />
 
+      {currentCoordinates && (
+        <View style={styles.coordinatesDisplay}>
+          <View style={styles.coordinatesHeader}>
+            <Ionicons name="navigate-circle-outline" size={16} color={colors.success} />
+            <Text style={styles.coordinatesTitle}>GPS Coordinates</Text>
+          </View>
+          <Text style={styles.coordinatesText}>
+            Lat: {currentCoordinates.lat.toFixed(6)}, Lng: {currentCoordinates.lng.toFixed(6)}
+          </Text>
+        </View>
+      )}
+
       <Text style={styles.hint}>
-        Provide the exact location where the accident occurred. You can use GPS to automatically detect your current location.
+        Provide the exact location where the accident occurred. Use GPS for precise location coordinates.
       </Text>
     </View>
   );
@@ -171,6 +185,30 @@ const styles = StyleSheet.create({
   },
   addressInput: {
     marginBottom: layouts.spacing.sm,
+  },
+  coordinatesDisplay: {
+    backgroundColor: colors.success + '10',
+    borderWidth: 1,
+    borderColor: colors.success + '30',
+    borderRadius: layouts.borderRadius.md,
+    padding: layouts.spacing.md,
+    marginBottom: layouts.spacing.sm,
+  },
+  coordinatesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: layouts.spacing.xs,
+  },
+  coordinatesTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.success,
+    marginLeft: layouts.spacing.xs,
+  },
+  coordinatesText: {
+    fontSize: 12,
+    color: colors.success,
+    fontFamily: 'monospace',
   },
   hint: {
     fontSize: 12,

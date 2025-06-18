@@ -7,7 +7,6 @@ import LoadingIndicator from '../../components/LoadingIndicator';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
 import { signIn } from '../../lib/auth';
-import { LocationTaskManager } from '../../lib/locationTaskManager';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -29,10 +28,6 @@ export default function LoginScreen() {
 
       if (result.error) {
         setError(result.error.message);
-      } else {
-        setTimeout(async () => {
-          await LocationTaskManager.startLocationTracking();
-        }, 1500);
       }
     } catch (err) {
       setError('An unexpected error occurred');
@@ -44,13 +39,11 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Background gradient */}
       <LinearGradient
         colors={[colors.background, colors.gradientLight]}
         style={styles.backgroundGradient}
       />
       
-      {/* Decorative circles */}
       <View style={[styles.decorativeCircle, styles.circle1]} />
       <View style={[styles.decorativeCircle, styles.circle2]} />
       <View style={[styles.decorativeCircle, styles.circle3]} />
@@ -61,7 +54,6 @@ export default function LoginScreen() {
         keyboardVerticalOffset={50}
       >
         <View style={styles.content}>
-          {/* Logo Section */}
           <View style={styles.logoContainer}>
             <View style={styles.logoWrapper}>
               <Image 
@@ -72,7 +64,6 @@ export default function LoginScreen() {
             </View>
           </View>
 
-          {/* Form Section */}
           <View style={styles.formContainer}>
             <View style={styles.formInner}>
               <View style={styles.welcomeSection}>

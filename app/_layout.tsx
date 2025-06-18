@@ -4,10 +4,8 @@ import { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView, Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
-import { LocationTaskManager } from '../lib/locationTaskManager';
 import { notificationService } from '../lib/notificationService';
 import * as Notifications from 'expo-notifications';
-import '../tasks/locationTask';
 
 export default function RootLayout() {
   const [isLoading, setIsLoading] = useState(true);
@@ -21,19 +19,8 @@ export default function RootLayout() {
         await notificationService.initializeNotifications();
         console.log('Notification service initialized in root layout');
         
-        await LocationTaskManager.initializeLocationTracking();
-        
         const { data, error } = await supabase.auth.getSession();
         setIsSignedIn(!!data.session);
-        
-        if (data.session) {
-          const isTracking = await LocationTaskManager.getTrackingStatus();
-          if (!isTracking) {
-            setTimeout(async () => {
-              await LocationTaskManager.startLocationTracking();
-            }, 1000);
-          }
-        }
       } catch (err) {
         console.error('Error initializing app:', err);
         setIsSignedIn(false);
@@ -47,12 +34,7 @@ export default function RootLayout() {
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       setIsSignedIn(!!session);
       
-      if (event === 'SIGNED_IN' && session) {
-        setTimeout(async () => {
-          await LocationTaskManager.startLocationTracking();
-        }, 2000);
-      } else if (event === 'SIGNED_OUT') {
-        await LocationTaskManager.stopLocationTracking();
+      if (event === 'SIGNED_OUT') {
         await notificationService.stopAllWashReminders();
         console.log('Stopped all wash reminders on sign out');
       }

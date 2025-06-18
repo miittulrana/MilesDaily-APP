@@ -6,6 +6,7 @@ import LoadingIndicator from '../../../components/LoadingIndicator';
 import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { uploadAccidentImage, submitAccidentReport, getDriverVehicles } from '../../../lib/accidentService';
+import { GENERAL_SUB_TYPES, getRequiredReportType } from '../../../utils/accidentTypes';
 
 interface Vehicle {
   id: string;
@@ -126,7 +127,8 @@ export default function ReviewScreen() {
   const getAccidentTypeDisplay = () => {
     const typeDisplay = params.type === 'front-to-rear' ? 'Front-to-Rear' : 'General';
     if (params.subType) {
-      return `${typeDisplay} (${(params.subType as string).toUpperCase()})`;
+      const subTypeData = GENERAL_SUB_TYPES.find(st => st.id === params.subType);
+      return `${typeDisplay} (${subTypeData?.title || params.subType})`;
     }
     return typeDisplay;
   };
@@ -138,6 +140,13 @@ export default function ReviewScreen() {
   const formatDateTime = () => {
     const date = new Date(`${params.date}T${params.time}`);
     return date.toLocaleDateString() + ' at ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const getReportNumbers = () => {
+    const numbers = [];
+    if (params.policeReportNo) numbers.push(`Police: ${params.policeReportNo}`);
+    if (params.lesaReportNo) numbers.push(`LESA: ${params.lesaReportNo}`);
+    return numbers;
   };
 
   const vehicleInfo = getVehicleInfo();
@@ -208,20 +217,19 @@ export default function ReviewScreen() {
                 <Text style={styles.infoLabel}>Location:</Text>
                 <Text style={styles.infoText}>{params.location}</Text>
               </View>
-              {params.lesaReportNo && (
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>LESA Report:</Text>
-                  <Text style={styles.infoText}>{params.lesaReportNo}</Text>
-                </View>
-              )}
-              {params.policeReportNo && (
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Police Report:</Text>
-                  <Text style={styles.infoText}>{params.policeReportNo}</Text>
-                </View>
-              )}
             </View>
           </View>
+
+          {getReportNumbers().length > 0 && (
+            <View style={styles.reviewSection}>
+              <Text style={styles.sectionTitle}>📄 Report Numbers</Text>
+              <View style={styles.infoCard}>
+                {getReportNumbers().map((reportNum, index) => (
+                  <Text key={index} style={styles.infoText}>{reportNum}</Text>
+                ))}
+              </View>
+            </View>
+          )}
 
           <View style={styles.reviewSection}>
             <Text style={styles.sectionTitle}>📸 Uploaded Images</Text>

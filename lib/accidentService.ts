@@ -66,30 +66,23 @@ export const uploadAccidentImage = async (
   imageOrder: number
 ): Promise<{ success: boolean; error?: string }> => {
   try {
-    console.log('Starting direct Supabase image upload:', { reportId, imageType, imageOrder });
-    
     const { data: { user } } = await supabase.auth.getUser();
     if (!user?.id) {
       throw new Error('No authenticated user');
     }
 
-    // Upload directly to Supabase Storage (like wash service does)
-    console.log('Fetching image from URI:', imageUri);
     const response = await fetch(imageUri);
     if (!response.ok) {
       throw new Error(`Failed to fetch image: ${response.status}`);
     }
     
     const imageData = await response.arrayBuffer();
-    console.log('Image data loaded, size:', imageData.byteLength);
     
     const fileExt = 'jpg';
     const fileName = `${imageType}_${imageOrder}_${reportId}_${Date.now()}.${fileExt}`;
     const filePath = `${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${reportId}/${fileName}`;
     
     const bucketName = imageType === 'accident_photo' ? 'accident-photos' : 'accident-forms';
-    
-    console.log('Uploading to Supabase storage:', { bucketName, filePath });
     
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from(bucketName)
@@ -103,17 +96,12 @@ export const uploadAccidentImage = async (
       throw new Error(`Failed to upload image: ${uploadError.message}`);
     }
 
-    console.log('Image uploaded successfully:', uploadData.path);
-
-    // Get public URL
     const { data: publicUrlData } = supabase.storage
       .from(bucketName)
       .getPublicUrl(uploadData.path);
 
     const imageUrl = publicUrlData.publicUrl;
-    console.log('Image public URL:', imageUrl);
 
-    // Save image record to database
     const { data: imageRecord, error: imageError } = await supabase
       .from('accident_report_images')
       .insert({
@@ -131,7 +119,6 @@ export const uploadAccidentImage = async (
 
     if (imageError) {
       console.error('Database insert error:', imageError);
-      // Clean up uploaded file if database insert fails
       await supabase.storage
         .from(bucketName)
         .remove([filePath]);
@@ -139,7 +126,6 @@ export const uploadAccidentImage = async (
       throw new Error(`Failed to save image record: ${imageError.message}`);
     }
 
-    console.log('Image record saved successfully:', imageRecord.id);
     return { success: true };
     
   } catch (error) {

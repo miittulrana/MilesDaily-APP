@@ -1,5 +1,5 @@
 export type AccidentType = 'front-to-rear' | 'general';
-export type GeneralSubType = 'lesa' | 'police' | 'physical-injury';
+export type GeneralSubType = 'injury' | 'govt-property' | 'private-property';
 export type AccidentStatus = 'pending' | 'viewed' | 'submitted' | 'processed' | 'on-hold' | 'cancelled';
 export type ImageType = 'form1' | 'form2' | 'accident_photo';
 
@@ -75,24 +75,32 @@ export const ACCIDENT_TYPES = [
 
 export const GENERAL_SUB_TYPES = [
   {
-    id: 'lesa' as GeneralSubType,
-    title: 'LESA',
-    description: 'Law Enforcement Safety Authority report required',
-    color: '#10b981'
+    id: 'injury' as GeneralSubType,
+    title: 'Injury',
+    description: 'Accident involving personal injury',
+    reportType: 'police',
+    color: '#ef4444'
   },
   {
-    id: 'police' as GeneralSubType,
-    title: 'Police',
-    description: 'Police report filed',
+    id: 'govt-property' as GeneralSubType,
+    title: 'Govt. Property',
+    description: 'Damage to government property',
+    reportType: 'police',
     color: '#3b82f6'
   },
   {
-    id: 'physical-injury' as GeneralSubType,
-    title: 'Physical Injury',
-    description: 'Accident involving physical injuries',
-    color: '#ef4444'
+    id: 'private-property' as GeneralSubType,
+    title: 'Private Property',
+    description: 'Damage to private property',
+    reportType: 'lesa',
+    color: '#10b981'
   }
 ];
+
+export const getRequiredReportType = (subType: GeneralSubType): 'police' | 'lesa' => {
+  const subTypeConfig = GENERAL_SUB_TYPES.find(st => st.id === subType);
+  return subTypeConfig?.reportType || 'police';
+};
 
 export const IMAGE_TYPES = [
   {

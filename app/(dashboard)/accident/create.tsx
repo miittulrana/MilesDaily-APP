@@ -10,7 +10,7 @@ import PhotoCapture from '../../../components/accident/PhotoCapture';
 import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { createAccidentReport, getDriverVehicles, uploadAccidentImage, submitAccidentReport } from '../../../lib/accidentService';
-import { AccidentType, GeneralSubType, ACCIDENT_TYPES, GENERAL_SUB_TYPES } from '../../../utils/accidentTypes';
+import { AccidentType, GeneralSubType, ACCIDENT_TYPES, GENERAL_SUB_TYPES, getRequiredReportType } from '../../../utils/accidentTypes';
 
 interface Vehicle {
   id: string;
@@ -19,7 +19,7 @@ interface Vehicle {
   model?: string;
 }
 
-type Step = 'vehicle' | 'type' | 'subtype' | 'details' | 'photos' | 'review';
+type Step = 'vehicle' | 'type' | 'subtype' | 'report-numbers' | 'forms' | 'photos' | 'location' | 'review';
 
 export default function CreateAccidentScreen() {
   const router = useRouter();
@@ -64,7 +64,22 @@ export default function CreateAccidentScreen() {
     }
   };
 
+  const getStepFlow = (): Step[] => {
+    const baseSteps: Step[] = ['vehicle', 'type'];
+    
+    if (selectedType === 'front-to-rear') {
+      return [...baseSteps, 'photos', 'location', 'review'];
+    } else if (selectedType === 'general') {
+      return [...baseSteps, 'subtype', 'report-numbers', 'forms', 'photos', 'location', 'review'];
+    }
+    
+    return baseSteps;
+  };
+
   const handleNext = async () => {
+    const stepFlow = getStepFlow();
+    const currentIndex = stepFlow.indexOf(currentStep);
+    
     switch (currentStep) {
       case 'vehicle':
         if (!selectedVehicle) {
@@ -79,10 +94,10 @@ export default function CreateAccidentScreen() {
           Alert.alert('Error', 'Please select accident type');
           return;
         }
-        if (selectedType === 'general') {
-          setCurrentStep('subtype');
+        if (selectedType === 'front-to-rear') {
+          setCurrentStep('photos');
         } else {
-          setCurrentStep('details');
+          setCurrentStep('subtype');
         }
         break;
         
@@ -91,24 +106,39 @@ export default function CreateAccidentScreen() {
           Alert.alert('Error', 'Please select accident sub-type');
           return;
         }
-        setCurrentStep('details');
+        setCurrentStep('report-numbers');
         break;
         
-      case 'details':
-        if (!location.trim()) {
-          Alert.alert('Error', 'Please enter accident location');
+      case 'report-numbers':
+        const reportType = getRequiredReportType(selectedSubType!);
+        if (reportType === 'police' && !policeReportNo.trim()) {
+          Alert.alert('Error', 'Police report number is required');
           return;
         }
-        // Don't create report here - just move to photos
+        if (reportType === 'lesa' && !lesaReportNo.trim()) {
+          Alert.alert('Error', 'LESA report number is required');
+          return;
+        }
+        setCurrentStep('forms');
+        break;
+        
+      case 'forms':
         setCurrentStep('photos');
         break;
         
       case 'photos':
-        if (form1Images.length === 0 && form2Images.length === 0) {
+        if (selectedType === 'general' && form1Images.length === 0 && form2Images.length === 0) {
           Alert.alert('Error', 'Please upload at least one form image');
           return;
         }
-        // Don't upload images here - just move to review
+        setCurrentStep('location');
+        break;
+        
+      case 'location':
+        if (!location.trim()) {
+          Alert.alert('Error', 'Please enter accident location');
+          return;
+        }
         setCurrentStep('review');
         break;
         
@@ -122,9 +152,6 @@ export default function CreateAccidentScreen() {
     try {
       setSubmitting(true);
       
-      console.log('Creating accident report...');
-      
-      // Step 1: Create the accident report
       const result = await createAccidentReport({
         vehicle_id: selectedVehicle,
         accident_type: selectedType!,
@@ -143,32 +170,21 @@ export default function CreateAccidentScreen() {
         return;
       }
 
-      console.log('Report created with ID:', result.reportId);
-
-      // Step 2: Upload all images
       const allImages = [
         ...form1Images.map((uri, index) => ({ uri, type: 'form1' as const, order: index })),
         ...form2Images.map((uri, index) => ({ uri, type: 'form2' as const, order: index })),
         ...accidentPhotos.map((uri, index) => ({ uri, type: 'accident_photo' as const, order: index })),
       ];
 
-      console.log(`Uploading ${allImages.length} images...`);
-
       for (let i = 0; i < allImages.length; i++) {
         const image = allImages[i];
-        console.log(`Uploading image ${i + 1}/${allImages.length}: ${image.type}`);
-        
         const uploadResult = await uploadAccidentImage(result.reportId, image.uri, image.type, image.order);
         if (!uploadResult.success) {
-          console.error(`Failed to upload image ${i + 1}:`, uploadResult.error);
           Alert.alert('Upload Error', `Failed to upload image ${i + 1}: ${uploadResult.error}`);
           return;
         }
       }
 
-      console.log('All images uploaded successfully');
-
-      // Step 3: Submit the report
       const submitResult = await submitAccidentReport(result.reportId);
       
       if (submitResult.success) {
@@ -181,7 +197,6 @@ export default function CreateAccidentScreen() {
         Alert.alert('Error', submitResult.error || 'Failed to submit report');
       }
     } catch (error) {
-      console.error('Error in submitReport:', error);
       Alert.alert('Error', 'Failed to submit report');
     } finally {
       setSubmitting(false);
@@ -189,33 +204,18 @@ export default function CreateAccidentScreen() {
   };
 
   const handleBack = () => {
-    switch (currentStep) {
-      case 'type':
-        setCurrentStep('vehicle');
-        break;
-      case 'subtype':
-        setCurrentStep('type');
-        break;
-      case 'details':
-        if (selectedType === 'general') {
-          setCurrentStep('subtype');
-        } else {
-          setCurrentStep('type');
-        }
-        break;
-      case 'photos':
-        setCurrentStep('details');
-        break;
-      case 'review':
-        setCurrentStep('photos');
-        break;
-      default:
-        router.back();
+    const stepFlow = getStepFlow();
+    const currentIndex = stepFlow.indexOf(currentStep);
+    
+    if (currentIndex > 0) {
+      setCurrentStep(stepFlow[currentIndex - 1]);
+    } else {
+      router.back();
     }
   };
 
   const renderStepIndicator = () => {
-    const steps = ['vehicle', 'type', selectedType === 'general' ? 'subtype' : null, 'details', 'photos', 'review'].filter(Boolean);
+    const steps = getStepFlow();
     const currentIndex = steps.indexOf(currentStep);
     
     return (
@@ -322,11 +322,30 @@ export default function CreateAccidentScreen() {
           </View>
         );
         
-      case 'details':
+      case 'report-numbers':
+        const reportType = selectedSubType ? getRequiredReportType(selectedSubType) : 'police';
         return (
           <View style={styles.stepContent}>
-            <Text style={styles.stepTitle}>Accident Details</Text>
-            <Text style={styles.stepDescription}>Provide details about when and where the accident occurred</Text>
+            <Text style={styles.stepTitle}>Report Numbers</Text>
+            <Text style={styles.stepDescription}>Enter the required report number for this accident type</Text>
+            
+            {reportType === 'police' ? (
+              <FormInput
+                label="Police Report Number"
+                value={policeReportNo}
+                onChangeText={setPoliceReportNo}
+                placeholder="Enter police report number"
+                required
+              />
+            ) : (
+              <FormInput
+                label="LESA Report Number"
+                value={lesaReportNo}
+                onChangeText={setLesaReportNo}
+                placeholder="Enter LESA report number"
+                required
+              />
+            )}
             
             <View style={styles.dateTimeRow}>
               <FormInput
@@ -344,41 +363,14 @@ export default function CreateAccidentScreen() {
                 containerStyle={styles.timeInput}
               />
             </View>
-            
-            <LocationPicker
-              address={location}
-              onAddressChange={setLocation}
-              onLocationChange={(lat, lng) => {
-                setLocationLat(lat);
-                setLocationLng(lng);
-              }}
-            />
-            
-            {selectedSubType === 'lesa' || selectedSubType === 'physical-injury' ? (
-              <FormInput
-                label="LESA Report Number"
-                value={lesaReportNo}
-                onChangeText={setLesaReportNo}
-                placeholder="Enter LESA report number"
-              />
-            ) : null}
-            
-            {selectedSubType === 'police' || selectedSubType === 'physical-injury' ? (
-              <FormInput
-                label="Police Report Number"
-                value={policeReportNo}
-                onChangeText={setPoliceReportNo}
-                placeholder="Enter police report number"
-              />
-            ) : null}
           </View>
         );
         
-      case 'photos':
+      case 'forms':
         return (
           <View style={styles.stepContent}>
-            <Text style={styles.stepTitle}>Upload Photos</Text>
-            <Text style={styles.stepDescription}>Take or select photos of accident forms and the scene</Text>
+            <Text style={styles.stepTitle}>Accident Forms</Text>
+            <Text style={styles.stepDescription}>Upload clear photos of the completed accident forms</Text>
             
             <PhotoCapture
               imageType="form1"
@@ -397,6 +389,14 @@ export default function CreateAccidentScreen() {
               images={form2Images}
               onImagesChange={setForm2Images}
             />
+          </View>
+        );
+        
+      case 'photos':
+        return (
+          <View style={styles.stepContent}>
+            <Text style={styles.stepTitle}>Accident Photos</Text>
+            <Text style={styles.stepDescription}>Take or select photos of the accident scene and vehicle damage</Text>
             
             <PhotoCapture
               imageType="accident_photo"
@@ -405,6 +405,23 @@ export default function CreateAccidentScreen() {
               maxImages={10}
               images={accidentPhotos}
               onImagesChange={setAccidentPhotos}
+            />
+          </View>
+        );
+        
+      case 'location':
+        return (
+          <View style={styles.stepContent}>
+            <Text style={styles.stepTitle}>Accident Location</Text>
+            <Text style={styles.stepDescription}>Provide the exact location where the accident occurred</Text>
+            
+            <LocationPicker
+              address={location}
+              onAddressChange={setLocation}
+              onLocationChange={(lat, lng) => {
+                setLocationLat(lat);
+                setLocationLng(lng);
+              }}
             />
           </View>
         );
@@ -443,6 +460,14 @@ export default function CreateAccidentScreen() {
               <Text style={styles.reviewSectionTitle}>Location</Text>
               <Text style={styles.reviewText}>{location}</Text>
             </View>
+            
+            {(policeReportNo || lesaReportNo) && (
+              <View style={styles.reviewSection}>
+                <Text style={styles.reviewSectionTitle}>Report Numbers</Text>
+                {policeReportNo && <Text style={styles.reviewText}>Police: {policeReportNo}</Text>}
+                {lesaReportNo && <Text style={styles.reviewText}>LESA: {lesaReportNo}</Text>}
+              </View>
+            )}
             
             <View style={styles.reviewSection}>
               <Text style={styles.reviewSectionTitle}>Images</Text>
