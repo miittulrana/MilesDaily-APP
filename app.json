@@ -20,7 +20,15 @@
       "bundleIdentifier": "com.milesxp.daily",
       "infoPlist": {
         "NSCameraUsageDescription": "This app needs camera access to take photos of washed vehicles.",
-        "NSPhotoLibraryUsageDescription": "This app needs photo library access to select vehicle wash photos."
+        "NSPhotoLibraryUsageDescription": "This app needs photo library access to select vehicle wash photos.",
+        "NSLocationWhenInUseUsageDescription": "This app needs location access for route optimization and delivery efficiency.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs continuous location access for fleet coordination and route optimization.",
+        "NSLocationAlwaysUsageDescription": "Background location access enables continuous route optimization and improves delivery efficiency.",
+        "UIBackgroundModes": [
+          "location",
+          "background-processing",
+          "background-fetch"
+        ]
       }
     },
     "android": {
@@ -34,14 +42,50 @@
         "ACCESS_NETWORK_STATE",
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "WAKE_LOCK",
+        "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+        "RECEIVE_BOOT_COMPLETED",
+        "SYSTEM_ALERT_WINDOW",
+        "ACCESS_LOCATION_EXTRA_COMMANDS",
+        "VIBRATE",
+        "DISABLE_KEYGUARD",
+        "PARTIAL_WAKE_LOCK",
+        "SCHEDULE_EXACT_ALARM"
       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "This app needs location access for route optimization and delivery efficiency.",
+          "locationAlwaysPermission": "Background location access enables continuous route optimization and improves delivery efficiency.",
+          "locationWhenInUsePermission": "This app needs location access for route optimization and delivery efficiency.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-task-manager"
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#ff6b00",
+          "defaultChannel": "fleet-service"
+        }
+      ]
     ],
     "scheme": "fleet-management",
     "extra": {

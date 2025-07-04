@@ -122,7 +122,7 @@ export default function CreateAccidentScreen() {
         break;
         
       case 'forms':
-        if (form1Images.length === 0) {
+        if (selectedType === 'front-to-rear' && form1Images.length === 0) {
           Alert.alert('Error', 'Please upload at least Form 1');
           return;
         }
@@ -475,7 +475,10 @@ export default function CreateAccidentScreen() {
             <View style={styles.reviewSection}>
               <Text style={styles.reviewSectionTitle}>Images</Text>
               <Text style={styles.reviewText}>
-                {form1Images.length + form2Images.length + accidentPhotos.length} images ready to upload
+                {selectedType === 'front-to-rear' 
+                  ? `${form1Images.length + form2Images.length + accidentPhotos.length} images ready to upload`
+                  : `${accidentPhotos.length} accident photos ready to upload`
+                }
               </Text>
             </View>
           </View>
