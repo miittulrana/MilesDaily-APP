@@ -20,6 +20,8 @@ export default function ModuleCard({ title, iconName, onPress }: ModuleCardProps
         return '#10b981';
       case 'wash':
         return '#06b6d4';
+      case 'minor repairs':
+        return '#f59e0b';
       case 'accident':
         return '#ef4444';
       case 'damage log':
@@ -45,6 +47,8 @@ export default function ModuleCard({ title, iconName, onPress }: ModuleCardProps
         return '#10b981' + '15';
       case 'wash':
         return '#06b6d4' + '15';
+      case 'minor repairs':
+        return '#f59e0b' + '15';
       case 'accident':
         return '#ef4444' + '15';
       case 'damage log':

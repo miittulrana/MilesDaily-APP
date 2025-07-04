@@ -80,6 +80,9 @@ export default function DashboardScreen() {
       router.push('/(dashboard)/truck-log');
     } else if (module === 'wash') {
       router.push('/(dashboard)/wash');
+    } else if (module === 'minor-repairs') {
+      console.log('Going to minor repairs screen');
+      router.push('/(dashboard)/minor-repairs');
     } else if (module === 'accident') {
       console.log('Going to accident screen');
       router.push('/(dashboard)/accident');
@@ -172,37 +175,41 @@ export default function DashboardScreen() {
         
         <View style={styles.moduleRow}>
           <ModuleCard
+            title="Minor Repairs"
+            iconName="construct-outline"
+            onPress={() => navigateToModule('minor-repairs')}
+          />
+          <ModuleCard
             title="Accident"
             iconName="warning-outline"
             onPress={() => navigateToModule('accident')}
           />
+        </View>
+        
+        <View style={styles.moduleRow}>
           <ModuleCard
             title="Damage Log"
             iconName="alert-circle-outline"
             onPress={() => navigateToModule('damage-log')}
           />
-        </View>
-        
-        <View style={styles.moduleRow}>
           <ModuleCard
             title="Breakdown"
             iconName="construct-outline"
             onPress={() => navigateToModule('breakdown')}
           />
+        </View>
+        
+        <View style={styles.moduleRow}>
           <ModuleCard
             title="Uniforms"
             iconName="shirt-outline"
             onPress={() => navigateToModule('uniforms')}
           />
-        </View>
-        
-        <View style={styles.moduleRow}>
           <ModuleCard
             title="Important Numbers"
             iconName="call-outline"
             onPress={() => navigateToModule('important-numbers')}
           />
-          <View style={styles.moduleCardPlaceholder} />
         </View>
       </View>
     </ScrollView>

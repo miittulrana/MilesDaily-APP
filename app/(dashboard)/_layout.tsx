@@ -86,6 +86,21 @@ export default function DashboardLayout() {
         }}
       />
       <Stack.Screen
+        name="minor-repairs/index"
+        options={{
+          headerShown: true,
+          title: 'Minor Repairs',
+        }}
+      />
+      <Stack.Screen
+        name="minor-repairs/add"
+        options={{
+          headerShown: true,
+          title: 'Report Repair',
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
         name="accident/index"
         options={{
           headerShown: true,
