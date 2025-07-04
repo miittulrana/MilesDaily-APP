@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import LoadingIndicator from '../../../components/LoadingIndicator';
+import ContactModal from '../../../components/ContactModal';
 import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { getDriverAccidents } from '../../../lib/accidentService';
@@ -14,6 +15,7 @@ export default function AccidentScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showContactModal, setShowContactModal] = useState(false);
 
   useEffect(() => {
     loadReports();
@@ -104,13 +106,24 @@ export default function AccidentScreen() {
     >
       <View style={styles.header}>
         <Text style={styles.title}>Accident Reports</Text>
-        <TouchableOpacity
-          style={styles.newClaimButton}
-          onPress={() => router.push('/(dashboard)/accident/create')}
-        >
-          <Ionicons name="add" size={24} color={colors.background} />
-          <Text style={styles.newClaimText}>Start New Claim</Text>
-        </TouchableOpacity>
+        
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity
+            style={styles.newClaimButton}
+            onPress={() => router.push('/(dashboard)/accident/create')}
+          >
+            <Ionicons name="add" size={24} color={colors.background} />
+            <Text style={styles.newClaimText}>Start New Claim</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.phoneButton}
+            onPress={() => setShowContactModal(true)}
+          >
+            <Ionicons name="call" size={20} color={colors.info} />
+            <Text style={styles.phoneButtonText}>Important Phone Numbers</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {error && (
@@ -192,6 +205,11 @@ export default function AccidentScreen() {
           ))}
         </View>
       )}
+
+      <ContactModal
+        visible={showContactModal}
+        onClose={() => setShowContactModal(false)}
+      />
     </ScrollView>
   );
 }
@@ -224,10 +242,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 4,
+    marginBottom: layouts.spacing.md,
   },
   newClaimText: {
     color: colors.background,
     fontSize: 16,
+    fontWeight: '600',
+    marginLeft: layouts.spacing.sm,
+  },
+  phoneButton: {
+    backgroundColor: colors.info + '15',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: layouts.spacing.md,
+    paddingHorizontal: layouts.spacing.lg,
+    borderRadius: layouts.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.info,
+  },
+  phoneButtonText: {
+    color: colors.info,
+    fontSize: 14,
     fontWeight: '600',
     marginLeft: layouts.spacing.sm,
   },

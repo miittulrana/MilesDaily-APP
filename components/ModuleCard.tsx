@@ -24,8 +24,10 @@ export default function ModuleCard({ title, iconName, onPress }: ModuleCardProps
         return '#ef4444';
       case 'damage log':
         return '#dc2626';
-      case 'uniforms':
+      case 'breakdown':
         return '#f59e0b';
+      case 'uniforms':
+        return '#8b5cf6';
       default:
         return colors.primary;
     }
@@ -45,8 +47,10 @@ export default function ModuleCard({ title, iconName, onPress }: ModuleCardProps
         return '#ef4444' + '15';
       case 'damage log':
         return '#dc2626' + '15';
-      case 'uniforms':
+      case 'breakdown':
         return '#f59e0b' + '15';
+      case 'uniforms':
+        return '#8b5cf6' + '15';
       default:
         return colors.primary + '15';
     }

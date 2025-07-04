@@ -148,6 +148,21 @@ export default function DashboardLayout() {
         }}
       />
       <Stack.Screen
+        name="breakdown/index"
+        options={{
+          headerShown: true,
+          title: 'Breakdown',
+        }}
+      />
+      <Stack.Screen
+        name="breakdown/add"
+        options={{
+          headerShown: true,
+          title: 'Report Breakdown',
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
         name="uniforms/index"
         options={{
           headerShown: true,

@@ -86,6 +86,9 @@ export default function DashboardScreen() {
     } else if (module === 'damage-log') {
       console.log('Going to damage log screen');
       router.push('/(dashboard)/damage-log');
+    } else if (module === 'breakdown') {
+      console.log('Going to breakdown screen');
+      router.push('/(dashboard)/breakdown');
     } else if (module === 'uniforms') {
       router.push('/(dashboard)/uniforms');
     }
@@ -180,11 +183,15 @@ export default function DashboardScreen() {
         
         <View style={styles.moduleRow}>
           <ModuleCard
+            title="Breakdown"
+            iconName="construct-outline"
+            onPress={() => navigateToModule('breakdown')}
+          />
+          <ModuleCard
             title="Uniforms"
             iconName="shirt-outline"
             onPress={() => navigateToModule('uniforms')}
           />
-          <View style={styles.moduleCardPlaceholder} />
         </View>
       </View>
     </ScrollView>

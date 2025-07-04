@@ -114,3 +114,31 @@ export const getAssignedVehicle = async (driverId: string) => {
     return null;
   }
 };
+
+export const getAssignedVehicleWithTemp = async (driverId: string) => {
+  try {
+    const { data: tempAssignment, error: tempError } = await supabase
+      .from('temp_assignments')
+      .select(`
+        vehicle_id,
+        vehicle:vehicles(*)
+      `)
+      .eq('temp_driver_id', driverId)
+      .eq('status', 'active')
+      .gte('end_datetime', new Date().toISOString())
+      .single();
+
+    if (!tempError && tempAssignment?.vehicle) {
+      console.log('Found active temp assignment vehicle:', tempAssignment.vehicle);
+      return tempAssignment.vehicle;
+    }
+
+    const permanentVehicle = await getAssignedVehicle(driverId);
+    console.log('Using permanent assigned vehicle:', permanentVehicle);
+    return permanentVehicle;
+  } catch (error) {
+    console.error('Get assigned vehicle with temp error:', error);
+    const permanentVehicle = await getAssignedVehicle(driverId);
+    return permanentVehicle;
+  }
+};
