@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "Miles-XP Daily",
+    "slug": "fleet-management",
+    "owner": "milesexpress",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.milesxp.daily",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app needs camera access to take photos of washed vehicles.",
+        "NSPhotoLibraryUsageDescription": "This app needs photo library access to select vehicle wash photos."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.milesxp.daily",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "scheme": "fleet-management",
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "88c8bcec-86c5-4a3b-8b7c-b49fcbce38b4"
+      }
+    }
+  }
+}
