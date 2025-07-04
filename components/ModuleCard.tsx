@@ -28,6 +28,8 @@ export default function ModuleCard({ title, iconName, onPress }: ModuleCardProps
         return '#f59e0b';
       case 'uniforms':
         return '#8b5cf6';
+      case 'important numbers':
+        return '#3b82f6';
       default:
         return colors.primary;
     }
@@ -51,6 +53,8 @@ export default function ModuleCard({ title, iconName, onPress }: ModuleCardProps
         return '#f59e0b' + '15';
       case 'uniforms':
         return '#8b5cf6' + '15';
+      case 'important numbers':
+        return '#3b82f6' + '15';
       default:
         return colors.primary + '15';
     }

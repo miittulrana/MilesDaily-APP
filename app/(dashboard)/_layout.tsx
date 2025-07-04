@@ -198,6 +198,13 @@ export default function DashboardLayout() {
         }}
       />
       <Stack.Screen
+        name="important-numbers/index"
+        options={{
+          headerShown: true,
+          title: 'Important Numbers',
+        }}
+      />
+      <Stack.Screen
         name="temp-assignment-documents"
         options={{
           headerShown: false,

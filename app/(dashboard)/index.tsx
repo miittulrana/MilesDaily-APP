@@ -91,6 +91,8 @@ export default function DashboardScreen() {
       router.push('/(dashboard)/breakdown');
     } else if (module === 'uniforms') {
       router.push('/(dashboard)/uniforms');
+    } else if (module === 'important-numbers') {
+      router.push('/(dashboard)/important-numbers');
     }
   };
 
@@ -192,6 +194,15 @@ export default function DashboardScreen() {
             iconName="shirt-outline"
             onPress={() => navigateToModule('uniforms')}
           />
+        </View>
+        
+        <View style={styles.moduleRow}>
+          <ModuleCard
+            title="Important Numbers"
+            iconName="call-outline"
+            onPress={() => navigateToModule('important-numbers')}
+          />
+          <View style={styles.moduleCardPlaceholder} />
         </View>
       </View>
     </ScrollView>
