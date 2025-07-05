@@ -53,10 +53,7 @@
         "RECEIVE_BOOT_COMPLETED",
         "SYSTEM_ALERT_WINDOW",
         "ACCESS_LOCATION_EXTRA_COMMANDS",
-        "VIBRATE",
-        "DISABLE_KEYGUARD",
-        "PARTIAL_WAKE_LOCK",
-        "SCHEDULE_EXACT_ALARM"
+        "VIBRATE"
       ]
     },
     "web": {

@@ -28,11 +28,6 @@ class GPSService {
   private uploadTimer: NodeJS.Timeout | null = null;
   private maxRetries = 3;
   private uploadInterval = 1000; // 1 second batch upload
-  private lastLocation: GPSLocation | null = null;
-  private isMoving = false;
-  private movementThreshold = 5; // meters
-  private stationaryTimer: NodeJS.Timeout | null = null;
-  private currentInterval = 3000; // Start with 3 seconds
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
@@ -62,9 +57,6 @@ class GPSService {
         return false;
       }
 
-      // Update driver GPS status FIRST
-      await this.updateDriverStatus(true);
-
       // Check permissions
       const hasPermissions = await this.checkPermissions();
       if (!hasPermissions) {
@@ -72,7 +64,23 @@ class GPSService {
         return false;
       }
 
+      // Start background location tracking
+      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+        accuracy: Location.Accuracy.High,
+        timeInterval: 3000, // 3 seconds
+        distanceInterval: 0, // Track even if not moving
+        deferredUpdatesInterval: 3000,
+        foregroundService: {
+          notificationTitle: 'Fleet Service Active',
+          notificationBody: 'Route optimization running',
+          notificationColor: '#ff6b00',
+        },
+        pausesLocationUpdatesAutomatically: false,
+        showsBackgroundLocationIndicator: false,
+      });
 
+      // Update driver GPS status
+      await this.updateDriverStatus(true);
 
       this.isTracking = true;
       console.log('GPS tracking started');
@@ -90,18 +98,7 @@ class GPSService {
       await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
       await this.updateDriverStatus(false);
       
-      // Clear timers
-      if (this.stationaryTimer) {
-        clearTimeout(this.stationaryTimer);
-        this.stationaryTimer = null;
-      }
-      
-      // Reset state
       this.isTracking = false;
-      this.isMoving = false;
-      this.lastLocation = null;
-      this.currentInterval = 3000;
-      
       console.log('GPS tracking stopped');
     } catch (error) {
       console.error('Failed to stop GPS tracking:', error);
@@ -138,92 +135,10 @@ class GPSService {
         timestamp: new Date().toISOString(),
       };
 
-      // Check if user is moving
-      const currentlyMoving = this.isUserMoving(gpsLocation);
-      
-      // If movement state changed, update tracking interval
-      if (currentlyMoving !== this.isMoving) {
-        this.isMoving = currentlyMoving;
-        await this.updateTrackingInterval();
-      }
-
       // Add to queue for batch upload
       await this.queueLocation(gpsLocation);
-      
-      // Store current location for next comparison
-      this.lastLocation = gpsLocation;
     } catch (error) {
       console.error('Error processing location update:', error);
-    }
-  }
-
-  private isUserMoving(currentLocation: GPSLocation): boolean {
-    if (!this.lastLocation) return false;
-    
-    // Calculate distance from last location
-    const distance = this.calculateDistance(
-      this.lastLocation.lat,
-      this.lastLocation.lng,
-      currentLocation.lat,
-      currentLocation.lng
-    );
-    
-    // Check if speed indicates movement
-    const speedMoving = currentLocation.speed > 0.5; // 0.5 m/s = 1.8 km/h
-    
-    // Check if position changed significantly
-    const positionMoving = distance > this.movementThreshold;
-    
-    return speedMoving || positionMoving;
-  }
-
-  private calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
-    const R = 6371e3; // Earth's radius in meters
-    const φ1 = lat1 * Math.PI / 180;
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lng2 - lng1) * Math.PI / 180;
-
-    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ/2) * Math.sin(Δλ/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-    return R * c;
-  }
-
-  private async updateTrackingInterval(): Promise<void> {
-    if (!this.isTracking) return;
-
-    try {
-      const newInterval = this.isMoving ? 3000 : 10000; // 3s moving, 10s stationary
-      
-      if (newInterval !== this.currentInterval) {
-        this.currentInterval = newInterval;
-        console.log(`Updating GPS interval to ${newInterval}ms - ${this.isMoving ? 'MOVING' : 'STATIONARY'}`);
-        
-        // Stop current tracking
-        await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
-        
-        // Start with new interval
-        await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-          accuracy: Location.Accuracy.High,
-          timeInterval: newInterval,
-          distanceInterval: 0, // Track even if not moving
-          deferredUpdatesInterval: newInterval,
-          foregroundService: {
-            notificationTitle: 'Fleet Service Active',
-            notificationBody: `Route optimization ${this.isMoving ? 'tracking movement' : 'monitoring position'}`,
-            notificationColor: '#ff6b00',
-          },
-          pausesLocationUpdatesAutomatically: false,
-          showsBackgroundLocationIndicator: false,
-          mayShowUserSettingsDialog: true,
-          killServiceOnDestroy: false,
-        });
-      }
-    } catch (error) {
-      console.error('Error updating tracking interval:', error);
     }
   }
 
@@ -307,9 +222,6 @@ class GPSService {
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-
-    // Also update driver status to ensure they show as active
-    await this.updateDriverStatus(true);
   }
 
   private async updateDriverStatus(isActive: boolean): Promise<void> {
@@ -350,28 +262,6 @@ class GPSService {
       clearInterval(this.uploadTimer);
       this.uploadTimer = null;
     }
-    
-    if (this.stationaryTimer) {
-      clearTimeout(this.stationaryTimer);
-      this.stationaryTimer = null;
-    }
-  }
-
-  // Get current tracking state for debugging
-  getTrackingInfo(): {
-    isTracking: boolean;
-    isMoving: boolean;
-    currentInterval: number;
-    queueSize: number;
-    lastLocation: GPSLocation | null;
-  } {
-    return {
-      isTracking: this.isTracking,
-      isMoving: this.isMoving,
-      currentInterval: this.currentInterval,
-      queueSize: this.uploadQueue.length,
-      lastLocation: this.lastLocation,
-    };
   }
 }
 

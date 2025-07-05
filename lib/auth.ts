@@ -44,6 +44,7 @@ export const signIn = async (email: string, password: string) => {
         .update({ last_login: new Date().toISOString() })
         .eq('id', data.user.id);
 
+      // Start GPS tracking after successful login
       try {
         console.log('Starting GPS tracking after login');
         const gpsStarted = await backgroundLocationService.startService();
@@ -54,6 +55,7 @@ export const signIn = async (email: string, password: string) => {
         }
       } catch (gpsError) {
         console.error('Error starting GPS tracking after login:', gpsError);
+        // Don't fail login if GPS fails
       }
 
       return { session: data.session, user: data.user, driverInfo: driverData };
@@ -68,11 +70,13 @@ export const signIn = async (email: string, password: string) => {
 
 export const signOut = async () => {
   try {
+    // Stop GPS tracking before signing out
     console.log('Stopping GPS tracking before logout');
     await backgroundLocationService.stopService();
     console.log('GPS tracking stopped before logout');
   } catch (gpsError) {
     console.error('Error stopping GPS tracking before logout:', gpsError);
+    // Continue with logout even if GPS stop fails
   }
 
   await supabase.auth.signOut();
@@ -164,6 +168,7 @@ export const getAssignedVehicleWithTemp = async (driverId: string) => {
   }
 };
 
+// GPS service status functions
 export const getGPSTrackingStatus = async () => {
   try {
     const isRunning = await backgroundLocationService.checkServiceStatus();

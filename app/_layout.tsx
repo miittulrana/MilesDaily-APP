@@ -110,15 +110,15 @@ export default function RootLayout() {
 
   const handleGPSPermissionsGranted = async () => {
     try {
-      console.log('GPS permissions granted - starting persistent background service');
+      console.log('GPS permissions granted - starting background service');
       const started = await backgroundLocationService.startService();
       if (started) {
-        console.log('Persistent background GPS tracking started - will continue even when app is closed');
+        console.log('Background GPS tracking started successfully');
       } else {
-        console.log('Failed to start persistent background GPS tracking');
+        console.log('Failed to start background GPS tracking');
       }
     } catch (error) {
-      console.error('Error starting persistent GPS service:', error);
+      console.error('Error starting GPS service:', error);
     }
   };
 

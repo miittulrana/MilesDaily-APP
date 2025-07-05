@@ -18,9 +18,9 @@ export interface GPSSettings {
 }
 
 export const DEFAULT_GPS_SETTINGS: GPSSettings = {
-  updateInterval: 3000,
+  updateInterval: 3000, // 3 seconds
   accuracy: Location.Accuracy.High,
-  distanceFilter: 0, 
+  distanceFilter: 0, // Track even if not moving
   enableHighAccuracy: true,
 };
 
@@ -41,7 +41,7 @@ export function calculateDistance(
   lat2: number,
   lon2: number
 ): number {
-  const R = 6371e3; 
+  const R = 6371e3; // Earth's radius in meters
   const φ1 = (lat1 * Math.PI) / 180;
   const φ2 = (lat2 * Math.PI) / 180;
   const Δφ = ((lat2 - lat1) * Math.PI) / 180;
@@ -115,14 +115,17 @@ export function getOptimalGPSSettings(
   const settings: GPSSettings = { ...DEFAULT_GPS_SETTINGS };
 
   if (powerSaveMode) {
-    settings.updateInterval = 5000; 
+    settings.updateInterval = 5000; // 5 seconds
     settings.accuracy = Location.Accuracy.Balanced;
-    settings.distanceFilter = 10; 
+    settings.distanceFilter = 10; // 10 meters
   }
 
+  // Platform-specific optimizations
   if (Platform.OS === 'android') {
+    // Android-specific optimizations
     settings.enableHighAccuracy = true;
   } else if (Platform.OS === 'ios') {
+    // iOS-specific optimizations
     settings.accuracy = Location.Accuracy.BestForNavigation;
   }
 
@@ -164,7 +167,7 @@ export function calculateETA(
   
   const distanceKm = distanceMeters / 1000;
   const timeHours = distanceKm / speedKmh;
-  return timeHours * 60; 
+  return timeHours * 60; // Return in minutes
 }
 
 /**
@@ -193,6 +196,7 @@ export class GPSSmoothing {
       return this.history[0];
     }
 
+    // Weight recent coordinates more heavily
     let totalWeight = 0;
     let weightedLat = 0;
     let weightedLon = 0;
@@ -201,7 +205,7 @@ export class GPSSmoothing {
     let weightedHeading = 0;
 
     for (let i = 0; i < this.history.length; i++) {
-      const weight = i + 1; 
+      const weight = i + 1; // More recent coordinates get higher weight
       const coord = this.history[i];
       
       totalWeight += weight;
@@ -232,10 +236,12 @@ export class GPSSmoothing {
 export function validateGPSLocation(location: Location.LocationObject): boolean {
   const { latitude, longitude, accuracy } = location.coords;
   
+  // Check if coordinates are valid
   if (!isValidGPSCoordinates(latitude, longitude)) {
     return false;
   }
 
+  // Check if accuracy is reasonable (less than 100 meters)
   if (accuracy && accuracy > 100) {
     return false;
   }
@@ -269,6 +275,7 @@ export async function getGPSCapabilities(): Promise<{
   try {
     const hasLocationServices = await Location.hasServicesEnabledAsync();
     
+    // For mobile devices, assume GPS is available
     const hasGPS = Platform.OS === 'android' || Platform.OS === 'ios';
     
     return {
