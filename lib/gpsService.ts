@@ -70,16 +70,18 @@ class GPSService {
       // Start background location tracking
       await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
         accuracy: Location.Accuracy.High,
-        timeInterval: 3000, // 3 seconds
+        timeInterval: 1000, // 1 second
         distanceInterval: 0, // Track even if not moving
-        deferredUpdatesInterval: 3000,
+        deferredUpdatesInterval: 1000,
         foregroundService: {
-          notificationTitle: 'Fleet Service Active',
-          notificationBody: 'Route optimization running',
+          notificationTitle: 'Fleet Management',
+          notificationBody: 'MXP Daily - App Optimization Running',
           notificationColor: '#ff6b00',
+          killServiceOnDestroy: false,
         },
         pausesLocationUpdatesAutomatically: false,
         showsBackgroundLocationIndicator: false,
+        activityType: Location.ActivityType.AutomotiveNavigation,
       });
 
       this.isTracking = true;

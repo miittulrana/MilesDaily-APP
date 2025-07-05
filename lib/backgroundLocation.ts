@@ -34,13 +34,15 @@ export class BackgroundLocationService {
   private async setupNotificationChannel(): Promise<void> {
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('gps-service', {
-        name: 'Fleet Service',
+        name: 'Fleet Management',
         importance: Notifications.AndroidImportance.LOW,
         vibrationPattern: [],
         lightColor: '#ff6b00',
         sound: false,
         enableVibrate: false,
         showBadge: false,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.SECRET,
+        bypassDnd: false,
       });
     }
   }
@@ -62,7 +64,14 @@ export class BackgroundLocationService {
       }
 
       // Request notification permissions (for foreground service)
-      const { status: notificationStatus } = await Notifications.requestPermissionsAsync();
+      const { status: notificationStatus } = await Notifications.requestPermissionsAsync({
+        android: {
+          allowAlert: true,
+          allowBadge: false,
+          allowSound: false,
+          allowAnnouncements: false,
+        },
+      });
       if (notificationStatus !== 'granted') {
         console.log('Notification permission not granted');
         return false;
@@ -194,10 +203,33 @@ export class BackgroundLocationService {
   async restartService(): Promise<boolean> {
     try {
       await this.stopService();
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
       return await this.startService();
     } catch (error) {
       console.error('Error restarting service:', error);
+      return false;
+    }
+  }
+
+  async forceRestartService(): Promise<boolean> {
+    try {
+      console.log('Force restarting GPS service');
+      this.isServiceRunning = false;
+      
+      // Stop all location updates
+      try {
+        await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+      } catch (e) {
+        console.log('Location updates already stopped');
+      }
+      
+      // Wait a moment
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Start fresh
+      return await this.startService();
+    } catch (error) {
+      console.error('Error force restarting service:', error);
       return false;
     }
   }

@@ -2,7 +2,7 @@ import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { KeyboardAvoidingView, Platform } from 'react-native';
+import { KeyboardAvoidingView, Platform, AppState, AppStateStatus } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { notificationService } from '../lib/notificationService';
 import { backgroundLocationService } from '../lib/backgroundLocation';
@@ -13,6 +13,7 @@ export default function RootLayout() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [gpsInitialized, setGpsInitialized] = useState(false);
+  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const router = useRouter();
   const segments = useSegments();
 
@@ -35,6 +36,17 @@ export default function RootLayout() {
         // If user is signed in, set up GPS
         if (userSignedIn) {
           setGpsInitialized(true);
+          // Auto-start GPS if user was previously signed in
+          setTimeout(async () => {
+            try {
+              const started = await backgroundLocationService.startService();
+              if (started) {
+                console.log('Auto-started GPS service after app initialization');
+              }
+            } catch (error) {
+              console.error('Failed to auto-start GPS service:', error);
+            }
+          }, 2000);
         }
       } catch (err) {
         console.error('Error initializing app:', err);
@@ -53,6 +65,17 @@ export default function RootLayout() {
       if (event === 'SIGNED_IN') {
         console.log('User signed in - initializing GPS tracking');
         setGpsInitialized(true);
+        // Force start GPS after sign in
+        setTimeout(async () => {
+          try {
+            const started = await backgroundLocationService.forceRestartService();
+            if (started) {
+              console.log('GPS service started after sign in');
+            }
+          } catch (error) {
+            console.error('Failed to start GPS after sign in:', error);
+          }
+        }, 1000);
       } else if (event === 'SIGNED_OUT') {
         console.log('User signed out - stopping GPS tracking');
         await backgroundLocationService.stopService();
@@ -127,23 +150,70 @@ export default function RootLayout() {
   };
 
   useEffect(() => {
-    const handleAppStateChange = (nextAppState: string) => {
-      console.log('App state changed to:', nextAppState);
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      console.log('App state changed from', appState, 'to', nextAppState);
       
-      if (nextAppState === 'background' || nextAppState === 'inactive') {
-        console.log('App backgrounded - GPS tracking continues');
-      } else if (nextAppState === 'active') {
-        console.log('App foregrounded - checking GPS service status');
+      if (appState.match(/inactive|background/) && nextAppState === 'active') {
+        console.log('App came to foreground');
+        
+        // Check and restart GPS service if needed when app becomes active
         if (isSignedIn && gpsInitialized) {
-          backgroundLocationService.checkServiceStatus();
+          setTimeout(async () => {
+            try {
+              const isRunning = await backgroundLocationService.checkServiceStatus();
+              if (!isRunning) {
+                console.log('GPS service not running, attempting to restart');
+                const restarted = await backgroundLocationService.forceRestartService();
+                if (restarted) {
+                  console.log('GPS service restarted successfully');
+                } else {
+                  console.log('Failed to restart GPS service');
+                }
+              } else {
+                console.log('GPS service is running normally');
+              }
+            } catch (error) {
+              console.error('Error checking/restarting GPS service:', error);
+            }
+          }, 3000);
         }
+      } else if (appState === 'active' && nextAppState.match(/inactive|background/)) {
+        console.log('App went to background - GPS tracking continues');
       }
+      
+      setAppState(nextAppState);
     };
 
-    console.log('App state change handler set up');
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
 
     return () => {
-      console.log('App state change handler cleaned up');
+      subscription?.remove();
+    };
+  }, [appState, isSignedIn, gpsInitialized]);
+
+  // Periodic check to ensure GPS service is running
+  useEffect(() => {
+    if (!isSignedIn || !gpsInitialized) return;
+
+    const checkInterval = setInterval(async () => {
+      try {
+        const isRunning = await backgroundLocationService.checkServiceStatus();
+        if (!isRunning) {
+          console.log('GPS service stopped unexpectedly, restarting...');
+          const restarted = await backgroundLocationService.forceRestartService();
+          if (restarted) {
+            console.log('GPS service restarted successfully');
+          } else {
+            console.log('Failed to restart GPS service');
+          }
+        }
+      } catch (error) {
+        console.error('Error during periodic GPS check:', error);
+      }
+    }, 30000); // Check every 30 seconds
+
+    return () => {
+      clearInterval(checkInterval);
     };
   }, [isSignedIn, gpsInitialized]);
 
