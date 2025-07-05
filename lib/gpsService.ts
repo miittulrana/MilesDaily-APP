@@ -57,6 +57,9 @@ class GPSService {
         return false;
       }
 
+      // Update driver GPS status FIRST
+      await this.updateDriverStatus(true);
+
       // Check permissions
       const hasPermissions = await this.checkPermissions();
       if (!hasPermissions) {
@@ -78,9 +81,6 @@ class GPSService {
         pausesLocationUpdatesAutomatically: false,
         showsBackgroundLocationIndicator: false,
       });
-
-      // Update driver GPS status
-      await this.updateDriverStatus(true);
 
       this.isTracking = true;
       console.log('GPS tracking started');
@@ -222,6 +222,9 @@ class GPSService {
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
+
+    // Also update driver status to ensure they show as active
+    await this.updateDriverStatus(true);
   }
 
   private async updateDriverStatus(isActive: boolean): Promise<void> {
