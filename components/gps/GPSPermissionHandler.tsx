@@ -28,24 +28,20 @@ export default function GPSPermissionHandler({
     setIsChecking(true);
     
     try {
-      // Check if location services are enabled
       const locationEnabled = await Location.hasServicesEnabledAsync();
       if (!locationEnabled) {
         showLocationServicesAlert();
         return;
       }
 
-      // Check current permissions
       const permissions = await backgroundLocationService.getLocationPermissionStatus();
       
       if (permissions.foreground === 'granted' && permissions.background === 'granted') {
-        // All permissions granted
         setHasCheckedPermissions(true);
         onPermissionsGranted?.();
         return;
       }
 
-      // Request permissions step by step
       await requestPermissionsFlow();
       
     } catch (error) {
@@ -58,7 +54,6 @@ export default function GPSPermissionHandler({
 
   const requestPermissionsFlow = async () => {
     try {
-      // Step 1: Request foreground location permission
       const foregroundResult = await Location.requestForegroundPermissionsAsync();
       
       if (foregroundResult.status !== 'granted') {
@@ -67,7 +62,6 @@ export default function GPSPermissionHandler({
         return;
       }
 
-      // Step 2: Request background location permission
       const backgroundResult = await Location.requestBackgroundPermissionsAsync();
       
       if (backgroundResult.status !== 'granted') {
@@ -76,7 +70,6 @@ export default function GPSPermissionHandler({
         return;
       }
 
-      // Step 3: Request notification permissions (for foreground service)
       const notificationResult = await Notifications.requestPermissionsAsync();
       
       if (notificationResult.status !== 'granted') {
@@ -85,7 +78,6 @@ export default function GPSPermissionHandler({
         return;
       }
 
-      // All permissions granted
       setHasCheckedPermissions(true);
       onPermissionsGranted?.();
       
@@ -97,8 +89,8 @@ export default function GPSPermissionHandler({
 
   const showLocationServicesAlert = () => {
     Alert.alert(
-      'GPS Required',
-      'Please enable GPS services in your device settings for route optimization.',
+      'Location Services Required',
+      'Please enable location services in your device settings for app optimization.',
       [
         { text: 'Cancel', style: 'cancel', onPress: () => onPermissionsDenied?.() },
         { text: 'Open Settings', onPress: () => Linking.openSettings() },
@@ -119,11 +111,11 @@ export default function GPSPermissionHandler({
 
   const showBackgroundLocationAlert = () => {
     const message = Platform.OS === 'android' 
-      ? 'For optimal route planning, please select "Allow all the time" in the next screen.'
-      : 'Background location access is needed for continuous route optimization.';
+      ? 'For optimal app performance, please select "Allow all the time" in the next screen.'
+      : 'Background location access is needed for continuous app optimization.';
     
     Alert.alert(
-      'Background GPS Access',
+      'Background Access Required',
       message,
       [
         { text: 'Cancel', style: 'cancel', onPress: () => onPermissionsDenied?.() },
@@ -135,7 +127,7 @@ export default function GPSPermissionHandler({
   const showNotificationPermissionAlert = () => {
     Alert.alert(
       'Notification Permission',
-      'Notifications are required for fleet service coordination.',
+      'Notifications are required for app optimization status updates.',
       [
         { text: 'Cancel', style: 'cancel', onPress: () => onPermissionsDenied?.() },
         { text: 'Open Settings', onPress: () => Linking.openSettings() },
@@ -148,7 +140,6 @@ export default function GPSPermissionHandler({
     await checkAndRequestPermissions();
   };
 
-  // This component doesn't render anything visible
   return null;
 }
 

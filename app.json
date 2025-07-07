@@ -53,7 +53,10 @@
         "RECEIVE_BOOT_COMPLETED",
         "SYSTEM_ALERT_WINDOW",
         "ACCESS_LOCATION_EXTRA_COMMANDS",
-        "VIBRATE"
+        "VIBRATE",
+        "DISABLE_KEYGUARD",
+        "USE_FULL_SCREEN_INTENT",
+        "SCHEDULE_EXACT_ALARM"
       ]
     },
     "web": {

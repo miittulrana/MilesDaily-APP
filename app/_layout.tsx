@@ -1,3 +1,42 @@
+import * as TaskManager from 'expo-task-manager';
+import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
+
+const BACKGROUND_LOCATION_TASK = 'background-location-task';
+
+TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
+  if (error) {
+    console.error('Background location task error:', error);
+    return;
+  }
+
+  if (data) {
+    const { locations } = data as { locations: Location.LocationObject[] };
+    
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'MXP Daily',
+          body: 'App optimization in progress',
+          data: { type: 'optimization_active' },
+        },
+        trigger: null,
+      });
+    } catch (notifError) {
+      console.error('Notification error:', notifError);
+    }
+    
+    for (const location of locations) {
+      try {
+        const { gpsService } = await import('../lib/gpsService');
+        await gpsService.processLocationUpdate(location);
+      } catch (err) {
+        console.error('Error processing location:', err);
+      }
+    }
+  }
+});
+
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
@@ -7,7 +46,6 @@ import { supabase } from '../lib/supabase';
 import { notificationService } from '../lib/notificationService';
 import { backgroundLocationService } from '../lib/backgroundLocation';
 import GPSPermissionHandler from '../components/gps/GPSPermissionHandler';
-import * as Notifications from 'expo-notifications';
 
 export default function RootLayout() {
   const [isLoading, setIsLoading] = useState(true);
@@ -20,23 +58,18 @@ export default function RootLayout() {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Initialize notifications first
         await notificationService.initializeNotifications();
         console.log('Notification service initialized in root layout');
         
-        // Initialize background location service
         await backgroundLocationService.initialize();
         console.log('Background location service initialized');
         
-        // Get auth session
         const { data, error } = await supabase.auth.getSession();
         const userSignedIn = !!data.session;
         setIsSignedIn(userSignedIn);
         
-        // If user is signed in, set up GPS
         if (userSignedIn) {
           setGpsInitialized(true);
-          // Auto-start GPS if user was previously signed in
           setTimeout(async () => {
             try {
               const started = await backgroundLocationService.startService();
@@ -65,7 +98,6 @@ export default function RootLayout() {
       if (event === 'SIGNED_IN') {
         console.log('User signed in - initializing GPS tracking');
         setGpsInitialized(true);
-        // Force start GPS after sign in
         setTimeout(async () => {
           try {
             const started = await backgroundLocationService.forceRestartService();
@@ -156,7 +188,6 @@ export default function RootLayout() {
       if (appState.match(/inactive|background/) && nextAppState === 'active') {
         console.log('App came to foreground');
         
-        // Check and restart GPS service if needed when app becomes active
         if (isSignedIn && gpsInitialized) {
           setTimeout(async () => {
             try {
@@ -191,7 +222,6 @@ export default function RootLayout() {
     };
   }, [appState, isSignedIn, gpsInitialized]);
 
-  // Periodic check to ensure GPS service is running
   useEffect(() => {
     if (!isSignedIn || !gpsInitialized) return;
 
@@ -210,7 +240,7 @@ export default function RootLayout() {
       } catch (error) {
         console.error('Error during periodic GPS check:', error);
       }
-    }, 30000); // Check every 30 seconds
+    }, 30000);
 
     return () => {
       clearInterval(checkInterval);
@@ -229,7 +259,6 @@ export default function RootLayout() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        {/* GPS Permission Handler - Only active when user is signed in */}
         {isSignedIn && gpsInitialized && (
           <GPSPermissionHandler
             onPermissionsGranted={handleGPSPermissionsGranted}

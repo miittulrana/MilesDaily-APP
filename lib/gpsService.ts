@@ -1,5 +1,4 @@
 import * as Location from 'expo-location';
-import * as TaskManager from 'expo-task-manager';
 import { supabase } from './supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -27,16 +26,14 @@ class GPSService {
   private uploadQueue: QueuedLocation[] = [];
   private uploadTimer: NodeJS.Timeout | null = null;
   private maxRetries = 3;
-  private uploadInterval = 1000; // 1 second batch upload
+  private uploadInterval = 1000;
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
 
     try {
-      // Load queued locations from storage
       await this.loadQueueFromStorage();
       
-      // Start upload processor
       this.startUploadProcessor();
       
       this.isInitialized = true;
@@ -50,38 +47,37 @@ class GPSService {
     if (this.isTracking) return true;
 
     try {
-      // Check if user is authenticated
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.log('No authenticated user, cannot start tracking');
         return false;
       }
 
-      // Update driver GPS status FIRST
       await this.updateDriverStatus(true);
 
-      // Check permissions
       const hasPermissions = await this.checkPermissions();
       if (!hasPermissions) {
         console.log('Location permissions not granted');
         return false;
       }
 
-      // Start background location tracking
       await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-        accuracy: Location.Accuracy.High,
-        timeInterval: 1000, // 1 second
-        distanceInterval: 0, // Track even if not moving
+        accuracy: Location.Accuracy.BestForNavigation,
+        timeInterval: 1000,
+        distanceInterval: 0,
         deferredUpdatesInterval: 1000,
+        deferredUpdatesDistance: 0,
+        deferredUpdatesTimeout: 30000,
         foregroundService: {
-          notificationTitle: 'Fleet Management',
-          notificationBody: 'MXP Daily - App Optimization Running',
+          notificationTitle: 'MXP Daily',
+          notificationBody: 'App optimization in progress',
           notificationColor: '#ff6b00',
           killServiceOnDestroy: false,
         },
         pausesLocationUpdatesAutomatically: false,
         showsBackgroundLocationIndicator: false,
         activityType: Location.ActivityType.AutomotiveNavigation,
+        mayShowUserSettingsDialog: true,
       });
 
       this.isTracking = true;
@@ -137,7 +133,6 @@ class GPSService {
         timestamp: new Date().toISOString(),
       };
 
-      // Add to queue for batch upload
       await this.queueLocation(gpsLocation);
     } catch (error) {
       console.error('Error processing location update:', error);
@@ -180,7 +175,7 @@ class GPSService {
     this.uploadTimer = setInterval(async () => {
       if (this.uploadQueue.length === 0) return;
 
-      const batch = this.uploadQueue.splice(0, 10); // Process 10 locations at a time
+      const batch = this.uploadQueue.splice(0, 10);
       
       for (const location of batch) {
         try {
@@ -188,7 +183,6 @@ class GPSService {
         } catch (error) {
           console.error('Failed to upload location:', error);
           
-          // Retry logic
           if (location.retryCount < this.maxRetries) {
             location.retryCount++;
             this.uploadQueue.push(location);
@@ -225,7 +219,6 @@ class GPSService {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    // Also update driver status to ensure they show as active
     await this.updateDriverStatus(true);
   }
 
@@ -270,22 +263,4 @@ class GPSService {
   }
 }
 
-// Background task definition
-TaskManager.defineTask(LOCATION_TASK_NAME, ({ data, error }) => {
-  if (error) {
-    console.error('Background location task error:', error);
-    return;
-  }
-
-  if (data) {
-    const { locations } = data as { locations: Location.LocationObject[] };
-    
-    // Process each location update
-    for (const location of locations) {
-      gpsService.processLocationUpdate(location);
-    }
-  }
-});
-
-// Singleton instance
 export const gpsService = new GPSService();

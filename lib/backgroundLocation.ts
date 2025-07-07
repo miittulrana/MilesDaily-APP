@@ -9,6 +9,7 @@ const BACKGROUND_LOCATION_TASK = 'background-location-task';
 export class BackgroundLocationService {
   private static instance: BackgroundLocationService;
   private isServiceRunning = false;
+  private restartTimer: NodeJS.Timeout | null = null;
 
   static getInstance(): BackgroundLocationService {
     if (!BackgroundLocationService.instance) {
@@ -19,11 +20,11 @@ export class BackgroundLocationService {
 
   async initialize(): Promise<void> {
     try {
-      // Initialize GPS service
       await gpsService.initialize();
       
-      // Setup notification channel for foreground service
       await this.setupNotificationChannel();
+      
+      this.startServiceMonitor();
       
       console.log('Background location service initialized');
     } catch (error) {
@@ -34,36 +35,49 @@ export class BackgroundLocationService {
   private async setupNotificationChannel(): Promise<void> {
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('gps-service', {
-        name: 'Fleet Management',
-        importance: Notifications.AndroidImportance.LOW,
+        name: 'MXP Daily Optimization',
+        importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [],
         lightColor: '#ff6b00',
         sound: false,
         enableVibrate: false,
         showBadge: false,
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.SECRET,
-        bypassDnd: false,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: true,
       });
     }
   }
 
+  private startServiceMonitor(): void {
+    if (this.restartTimer) return;
+    
+    this.restartTimer = setInterval(async () => {
+      try {
+        const isRunning = await this.checkServiceStatus();
+        if (!isRunning && this.isServiceRunning) {
+          console.log('GPS service stopped unexpectedly, restarting...');
+          await this.forceRestartService();
+        }
+      } catch (error) {
+        console.error('Error in service monitor:', error);
+      }
+    }, 10000);
+  }
+
   async requestPermissions(): Promise<boolean> {
     try {
-      // Request foreground location permission
       const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
       if (foregroundStatus !== 'granted') {
         console.log('Foreground location permission not granted');
         return false;
       }
 
-      // Request background location permission
       const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
       if (backgroundStatus !== 'granted') {
         console.log('Background location permission not granted');
         return false;
       }
 
-      // Request notification permissions (for foreground service)
       const { status: notificationStatus } = await Notifications.requestPermissionsAsync({
         android: {
           allowAlert: true,
@@ -88,16 +102,20 @@ export class BackgroundLocationService {
     if (this.isServiceRunning) return true;
 
     try {
-      // Check if task is already defined
-      if (!TaskManager.isTaskDefined(BACKGROUND_LOCATION_TASK)) {
-        this.defineLocationTask();
-      }
-
-      // Start GPS tracking
       const started = await gpsService.startTracking();
       if (started) {
         this.isServiceRunning = true;
         console.log('Background location service started');
+        
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'MXP Daily',
+            body: 'App optimization started',
+            data: { type: 'optimization_started' },
+          },
+          trigger: null,
+        });
+        
         return true;
       }
 
@@ -114,28 +132,16 @@ export class BackgroundLocationService {
     try {
       await gpsService.stopTracking();
       this.isServiceRunning = false;
+      
+      if (this.restartTimer) {
+        clearInterval(this.restartTimer);
+        this.restartTimer = null;
+      }
+      
       console.log('Background location service stopped');
     } catch (error) {
       console.error('Failed to stop background location service:', error);
     }
-  }
-
-  private defineLocationTask(): void {
-    TaskManager.defineTask(BACKGROUND_LOCATION_TASK, ({ data, error }) => {
-      if (error) {
-        console.error('Background location task error:', error);
-        return;
-      }
-
-      if (data) {
-        const { locations } = data as { locations: Location.LocationObject[] };
-        
-        // Process each location update
-        for (const location of locations) {
-          gpsService.processLocationUpdate(location);
-        }
-      }
-    });
   }
 
   async checkServiceStatus(): Promise<boolean> {
@@ -143,8 +149,13 @@ export class BackgroundLocationService {
       const isLocationTaskRunning = await TaskManager.isTaskRunning(BACKGROUND_LOCATION_TASK);
       const gpsStatus = gpsService.getTrackingStatus();
       
-      this.isServiceRunning = isLocationTaskRunning && gpsStatus;
-      return this.isServiceRunning;
+      const actualStatus = isLocationTaskRunning && gpsStatus;
+      
+      if (this.isServiceRunning && !actualStatus) {
+        console.log('Service status mismatch detected');
+      }
+      
+      return actualStatus;
     } catch (error) {
       console.error('Error checking service status:', error);
       return false;
@@ -203,7 +214,7 @@ export class BackgroundLocationService {
   async restartService(): Promise<boolean> {
     try {
       await this.stopService();
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+      await new Promise(resolve => setTimeout(resolve, 3000));
       return await this.startService();
     } catch (error) {
       console.error('Error restarting service:', error);
@@ -216,18 +227,28 @@ export class BackgroundLocationService {
       console.log('Force restarting GPS service');
       this.isServiceRunning = false;
       
-      // Stop all location updates
       try {
         await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
       } catch (e) {
         console.log('Location updates already stopped');
       }
       
-      // Wait a moment
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 5000));
       
-      // Start fresh
-      return await this.startService();
+      const restarted = await this.startService();
+      
+      if (restarted) {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'MXP Daily',
+            body: 'App optimization restarted',
+            data: { type: 'optimization_restarted' },
+          },
+          trigger: null,
+        });
+      }
+      
+      return restarted;
     } catch (error) {
       console.error('Error force restarting service:', error);
       return false;
@@ -246,5 +267,4 @@ export class BackgroundLocationService {
   }
 }
 
-// Export singleton instance
 export const backgroundLocationService = BackgroundLocationService.getInstance();
