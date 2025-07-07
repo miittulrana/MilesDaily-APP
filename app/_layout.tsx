@@ -92,11 +92,12 @@ export default function RootLayout() {
     initializeApp();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, !!session);
       const userSignedIn = !!session;
       setIsSignedIn(userSignedIn);
       
       if (event === 'SIGNED_IN') {
-        console.log('User signed in - initializing GPS tracking');
+        console.log('User signed in - NOT auto-redirecting to allow device code check');
         setGpsInitialized(true);
         setTimeout(async () => {
           try {
@@ -156,9 +157,13 @@ export default function RootLayout() {
     const inAuthGroup = segments[0] === '(auth)';
     const inDashboardGroup = segments[0] === '(dashboard)';
     
+    console.log('Route check - isSignedIn:', isSignedIn, 'inAuthGroup:', inAuthGroup, 'inDashboardGroup:', inDashboardGroup, 'segments:', segments);
+    
     if (!isSignedIn && !inAuthGroup) {
+      console.log('Not signed in and not in auth group - redirecting to login');
       router.replace('/(auth)/login');
     } else if (isSignedIn && inAuthGroup) {
+      console.log('Signed in and in auth group - redirecting to dashboard');
       router.replace('/(dashboard)');
     }
   }, [isSignedIn, isLoading, segments, router]);

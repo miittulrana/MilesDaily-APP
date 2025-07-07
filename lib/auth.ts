@@ -2,6 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { config } from '../constants/Config';
 import { supabase } from './supabase';
 import { backgroundLocationService } from './backgroundLocation';
+import { validateDriverDeviceCode } from './deviceCodeService';
+import { hasStoredDeviceCode } from './deviceCodeStorage';
 
 export type AuthError = {
   message: string;
@@ -37,6 +39,31 @@ export const signIn = async (email: string, password: string) => {
         return { error: { message: 'Your account is inactive. Please contact administrator.' } };
       }
 
+      const hasDeviceCode = await hasStoredDeviceCode(driverData.id);
+      
+      if (!hasDeviceCode) {
+        await supabase.auth.signOut();
+        return { 
+          error: { 
+            message: 'Device code required', 
+            requiresDeviceCode: true 
+          } 
+        };
+      }
+
+      // If we have a stored device code, validate it once
+      const deviceValidation = await validateDriverDeviceCode(driverData.id);
+      
+      if (!deviceValidation.is_valid) {
+        await supabase.auth.signOut();
+        return { 
+          error: { 
+            message: deviceValidation.message, 
+            deviceError: true 
+          } 
+        };
+      }
+
       await AsyncStorage.setItem(
         config.storage.userInfoKey,
         JSON.stringify(driverData)
@@ -53,6 +80,8 @@ export const signIn = async (email: string, password: string) => {
           if (gpsStarted) {
             console.log('GPS tracking started successfully after login');
           }
+        } else {
+          console.log('Development mode - skipping GPS tracking');
         }
       } catch (gpsError) {
         console.error('Error starting GPS tracking after login:', gpsError);

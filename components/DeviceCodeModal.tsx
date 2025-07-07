@@ -56,7 +56,7 @@ export default function DeviceCodeModal({ visible, onSubmit, onCancel, loading }
           <View style={styles.content}>
             <FormInput
               label="Device Code"
-              placeholder="e.g., mxp.cd.001"
+              placeholder="Enter device code"
               value={deviceCode}
               onChangeText={setDeviceCode}
               autoCapitalize="none"

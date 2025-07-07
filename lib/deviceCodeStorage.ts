@@ -48,23 +48,15 @@ export const getStoredDeviceCode = async (driverId: string): Promise<string | nu
 
 export const hasStoredDeviceCode = async (driverId: string): Promise<boolean> => {
   try {
-    console.log('Checking for stored device code for driver:', driverId);
-    
     const stored = await AsyncStorage.getItem(DEVICE_CODE_KEY);
-    console.log('Raw stored data:', stored);
     
     if (!stored) {
-      console.log('No stored device code found');
       return false;
     }
     
     const codeData: StoredDeviceCode = JSON.parse(stored);
-    console.log('Parsed device code data:', codeData);
     
-    const hasCode = codeData.driver_id === driverId && codeData.verified && codeData.device_code;
-    console.log('Has valid device code:', hasCode);
-    
-    return hasCode;
+    return codeData.driver_id === driverId && codeData.verified;
   } catch (error) {
     console.error('Error checking stored device code:', error);
     return false;

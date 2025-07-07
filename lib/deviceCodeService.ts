@@ -1,5 +1,5 @@
 import { config } from '../constants/Config';
-import { getStoredDeviceCode, storeDeviceCode } from '../utils/deviceCodeStorage';
+import { getStoredDeviceCode, storeDeviceCode } from './deviceCodeStorage';
 
 export interface DeviceCodeValidationRequest {
   driver_id: string;
@@ -15,20 +15,16 @@ export interface DeviceCodeValidationResponse {
 
 export const validateDriverDeviceCode = async (driverId: string, deviceCode?: string): Promise<DeviceCodeValidationResponse> => {
   try {
-    if (__DEV__) {
-      return {
-        is_valid: true,
-        device_registered: true,
-        device_active: true,
-        message: 'Development mode - validation bypassed'
-      };
-    }
-
+    console.log('validateDriverDeviceCode called with:', { driverId, deviceCode });
+    
     const storedCode = await getStoredDeviceCode(driverId);
+    console.log('Stored device code:', storedCode);
     
     const codeToValidate = deviceCode || storedCode;
+    console.log('Code to validate:', codeToValidate);
     
     if (!codeToValidate) {
+      console.log('No code to validate - returning DEVICE_CODE_REQUIRED');
       return {
         is_valid: false,
         device_registered: false,
@@ -42,6 +38,9 @@ export const validateDriverDeviceCode = async (driverId: string, deviceCode?: st
       device_code: codeToValidate
     };
     
+    console.log('Making API request to:', config.api.deviceValidationUrl);
+    console.log('Request data:', requestData);
+    
     const response = await fetch(config.api.deviceValidationUrl, {
       method: 'POST',
       headers: {
@@ -50,13 +49,20 @@ export const validateDriverDeviceCode = async (driverId: string, deviceCode?: st
       body: JSON.stringify(requestData),
     });
     
+    console.log('API response status:', response.status);
+    console.log('API response ok:', response.ok);
+    
     if (!response.ok) {
-      throw new Error(`Validation request failed: ${response.status}`);
+      const errorText = await response.text();
+      console.error('API response error:', errorText);
+      throw new Error(`Validation request failed: ${response.status} - ${errorText}`);
     }
     
     const result: DeviceCodeValidationResponse = await response.json();
+    console.log('API response result:', result);
     
     if (result.is_valid && deviceCode) {
+      console.log('Validation successful - storing device code');
       await storeDeviceCode(driverId, deviceCode);
     }
     
@@ -69,6 +75,34 @@ export const validateDriverDeviceCode = async (driverId: string, deviceCode?: st
       device_registered: false,
       device_active: false,
       message: 'Device validation failed'
+    };
+  }
+};
+
+export const submitDeviceCode = async (driverId: string, deviceCode: string): Promise<DeviceCodeValidationResponse> => {
+  try {
+    console.log('submitDeviceCode called with:', { driverId, deviceCode });
+    
+    const validation = await validateDriverDeviceCode(driverId, deviceCode);
+    
+    console.log('validateDriverDeviceCode returned:', validation);
+    
+    if (validation.is_valid) {
+      console.log('Validation successful - storing device code');
+      await storeDeviceCode(driverId, deviceCode);
+      console.log('Device code stored successfully');
+    } else {
+      console.log('Validation failed:', validation.message);
+    }
+    
+    return validation;
+  } catch (error) {
+    console.error('Error in submitDeviceCode:', error);
+    return {
+      is_valid: false,
+      device_registered: false,
+      device_active: false,
+      message: 'Failed to submit device code'
     };
   }
 };
