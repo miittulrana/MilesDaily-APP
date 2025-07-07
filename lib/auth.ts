@@ -1,14 +1,50 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { config } from '../constants/Config';
 import { supabase } from './supabase';
-import { backgroundLocationService } from './backgroundLocation';
 import { validateDriverDeviceCode } from './deviceCodeService';
-import { hasStoredDeviceCode } from './deviceCodeStorage';
 
 export type AuthError = {
   message: string;
   deviceError?: boolean;
   requiresDeviceCode?: boolean;
+};
+
+export const verifyCredentials = async (email: string, password: string) => {
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      return { error };
+    }
+
+    if (data?.user) {
+      const { data: driverData, error: driverError } = await supabase
+        .from('drivers')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+
+      await supabase.auth.signOut();
+
+      if (driverError) {
+        return { error: { message: 'Driver account not found' } };
+      }
+
+      if (!driverData.is_active) {
+        return { error: { message: 'Your account is inactive. Please contact administrator.' } };
+      }
+
+      return { driverInfo: driverData };
+    }
+
+    return { error: { message: 'Unknown error occurred' } };
+  } catch (error) {
+    console.error('Verify credentials error:', error);
+    return { error: { message: 'An unexpected error occurred' } };
+  }
 };
 
 export const signIn = async (email: string, password: string) => {
@@ -39,6 +75,13 @@ export const signIn = async (email: string, password: string) => {
         return { error: { message: 'Your account is inactive. Please contact administrator.' } };
       }
 
+      const deviceValidation = await validateDriverDeviceCode(driverData.id);
+
+      if (!deviceValidation.is_valid) {
+        await supabase.auth.signOut();
+        return { error: { message: 'Device not authorized', deviceError: true } };
+      }
+
       await AsyncStorage.setItem(
         config.storage.userInfoKey,
         JSON.stringify(driverData)
@@ -48,19 +91,6 @@ export const signIn = async (email: string, password: string) => {
         .from('drivers')
         .update({ last_login: new Date().toISOString() })
         .eq('id', data.user.id);
-
-      try {
-        if (!__DEV__) {
-          const gpsStarted = await backgroundLocationService.startService();
-          if (gpsStarted) {
-            console.log('GPS tracking started successfully after login');
-          }
-        } else {
-          console.log('Development mode - skipping GPS tracking');
-        }
-      } catch (gpsError) {
-        console.error('Error starting GPS tracking after login:', gpsError);
-      }
 
       return { session: data.session, user: data.user, driverInfo: driverData };
     }
@@ -73,14 +103,6 @@ export const signIn = async (email: string, password: string) => {
 };
 
 export const signOut = async () => {
-  try {
-    if (!__DEV__) {
-      await backgroundLocationService.stopService();
-    }
-  } catch (gpsError) {
-    console.error('Error stopping GPS tracking before logout:', gpsError);
-  }
-
   await supabase.auth.signOut();
   await AsyncStorage.removeItem(config.storage.userInfoKey);
 };
@@ -165,45 +187,5 @@ export const getAssignedVehicleWithTemp = async (driverId: string) => {
     console.error('Get assigned vehicle with temp error:', error);
     const permanentVehicle = await getAssignedVehicle(driverId);
     return permanentVehicle;
-  }
-};
-
-export const getGPSTrackingStatus = async () => {
-  try {
-    const isRunning = await backgroundLocationService.checkServiceStatus();
-    return isRunning;
-  } catch (error) {
-    console.error('Error checking GPS tracking status:', error);
-    return false;
-  }
-};
-
-export const startGPSTracking = async () => {
-  try {
-    const started = await backgroundLocationService.startService();
-    return started;
-  } catch (error) {
-    console.error('Error starting GPS tracking:', error);
-    return false;
-  }
-};
-
-export const stopGPSTracking = async () => {
-  try {
-    await backgroundLocationService.stopService();
-    return true;
-  } catch (error) {
-    console.error('Error stopping GPS tracking:', error);
-    return false;
-  }
-};
-
-export const restartGPSTracking = async () => {
-  try {
-    const restarted = await backgroundLocationService.restartService();
-    return restarted;
-  } catch (error) {
-    console.error('Error restarting GPS tracking:', error);
-    return false;
   }
 };

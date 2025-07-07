@@ -20,15 +20,7 @@
       "bundleIdentifier": "com.milesxp.daily",
       "infoPlist": {
         "NSCameraUsageDescription": "This app needs camera access to take photos of washed vehicles.",
-        "NSPhotoLibraryUsageDescription": "This app needs photo library access to select vehicle wash photos.",
-        "NSLocationWhenInUseUsageDescription": "This app needs location access for route optimization and delivery efficiency.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs continuous location access for fleet coordination and route optimization.",
-        "NSLocationAlwaysUsageDescription": "Background location access enables continuous route optimization and improves delivery efficiency.",
-        "UIBackgroundModes": [
-          "location",
-          "background-processing",
-          "background-fetch"
-        ]
+        "NSPhotoLibraryUsageDescription": "This app needs photo library access to select vehicle wash photos."
       }
     },
     "android": {
@@ -43,16 +35,6 @@
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION",
-        "WAKE_LOCK",
-        "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
-        "RECEIVE_BOOT_COMPLETED",
-        "SYSTEM_ALERT_WINDOW",
-        "ACCESS_LOCATION_EXTRA_COMMANDS",
         "VIBRATE",
         "DISABLE_KEYGUARD",
         "USE_FULL_SCREEN_INTENT",
@@ -64,20 +46,6 @@
     },
     "plugins": [
       "expo-router",
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "This app needs location access for route optimization and delivery efficiency.",
-          "locationAlwaysPermission": "Background location access enables continuous route optimization and improves delivery efficiency.",
-          "locationWhenInUsePermission": "This app needs location access for route optimization and delivery efficiency.",
-          "isIosBackgroundLocationEnabled": true,
-          "isAndroidBackgroundLocationEnabled": true,
-          "isAndroidForegroundServiceEnabled": true
-        }
-      ],
-      [
-        "expo-task-manager"
-      ],
       [
         "expo-notifications",
         {

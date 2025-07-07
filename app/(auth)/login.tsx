@@ -8,8 +8,9 @@ import DeviceValidationScreen from '../../components/DeviceValidationScreen';
 import DeviceCodeSetupScreen from '../../components/DeviceCodeSetupScreen';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
-import { signIn } from '../../lib/auth';
+import { signIn, verifyCredentials } from '../../lib/auth';
 import { submitDeviceCode } from '../../lib/deviceCodeService';
+import { hasStoredDeviceCode } from '../../lib/deviceCodeStorage';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -19,8 +20,6 @@ export default function LoginScreen() {
   const [showDeviceValidation, setShowDeviceValidation] = useState(false);
   const [showDeviceCodeSetup, setShowDeviceCodeSetup] = useState(false);
   const [pendingDriverId, setPendingDriverId] = useState<string | null>(null);
-
-  console.log('Login screen render - showDeviceCodeSetup:', showDeviceCodeSetup, 'pendingDriverId:', pendingDriverId);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -34,85 +33,41 @@ export default function LoginScreen() {
       setShowDeviceValidation(false);
       setShowDeviceCodeSetup(false);
 
-      console.log('Starting login process...');
+      const verificationResult = await verifyCredentials(email, password);
 
-      // First, check device code WITHOUT signing in to Supabase
-      const { supabase } = await import('../../lib/supabase');
-      
-      // Just check credentials without maintaining session
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (authError) {
-        console.log('Auth error:', authError.message);
-        setError(authError.message);
+      if (verificationResult.error) {
+        setError(verificationResult.error.message);
         setLoading(false);
         return;
       }
 
-      if (data?.user) {
-        // Get driver data
-        const { data: driverData, error: driverError } = await supabase
-          .from('drivers')
-          .select('*')
-          .eq('id', data.user.id)
-          .single();
+      if (!verificationResult.driverInfo) {
+        setError('Driver account not found');
+        setLoading(false);
+        return;
+      }
 
-        if (driverError || !driverData) {
-          console.log('Driver not found');
-          await supabase.auth.signOut();
-          setError('Driver account not found');
-          setLoading(false);
-          return;
-        }
+      const driverId = verificationResult.driverInfo.id;
+      const hasCode = await hasStoredDeviceCode(driverId);
 
-        if (!driverData.is_active) {
-          console.log('Driver inactive');
-          await supabase.auth.signOut();
-          setError('Your account is inactive. Please contact administrator.');
-          setLoading(false);
-          return;
-        }
+      if (!hasCode) {
+        setLoading(false);
+        setPendingDriverId(driverId);
+        setShowDeviceCodeSetup(true);
+        return;
+      }
 
-        console.log('Driver found:', driverData.id);
+      const result = await signIn(email, password);
 
-        // Check if device code is stored locally
-        const { hasStoredDeviceCode } = await import('../../lib/deviceCodeStorage');
-        const hasCode = await hasStoredDeviceCode(driverData.id);
-        
-        console.log('Has stored device code:', hasCode);
-
-        if (!hasCode) {
-          console.log('No device code found - showing setup screen');
-          setLoading(false);
-          setPendingDriverId(driverData.id);
-          setShowDeviceCodeSetup(true);
-          console.log('State should be set - pendingDriverId:', driverData.id, 'showDeviceCodeSetup: true');
-          return;
-        }
-
-        // If we have a stored code, use the normal signIn function
-        console.log('Device code found - proceeding with normal login');
-        
-        // Sign out the temporary session first
-        await supabase.auth.signOut();
-        
-        const result = await signIn(email, password);
-        
-        if (result.error) {
-          console.log('Sign in error:', result.error);
-          if (result.error.deviceError) {
-            setShowDeviceValidation(true);
-          } else {
-            setError(result.error.message);
-          }
+      if (result.error) {
+        if (result.error.deviceError) {
+          setShowDeviceValidation(true);
         } else {
-          console.log('Login successful!');
-          setLoading(false);
+          setError(result.error.message);
         }
       }
+
+      setLoading(false);
     } catch (err) {
       console.error('Login error:', err);
       setError('An unexpected error occurred');
@@ -130,33 +85,18 @@ export default function LoginScreen() {
       setLoading(true);
       setError(null);
 
-      console.log('Submitting device code:', deviceCode, 'for driver:', pendingDriverId);
-
-      const { submitDeviceCode } = await import('../../lib/deviceCodeService');
       const validation = await submitDeviceCode(pendingDriverId, deviceCode);
 
-      console.log('Device code validation result:', validation);
-
       if (validation.is_valid) {
-        console.log('Device code valid - attempting final login');
-        
-        // Complete the login process
         const result = await signIn(email, password);
-        
-        console.log('Final login result:', result);
-        
+
         if (result.error) {
-          console.log('Final login error:', result.error);
           setError(result.error.message);
         } else {
-          console.log('Login successful - resetting state and redirecting');
-          // Reset the device code setup state
           setShowDeviceCodeSetup(false);
           setPendingDriverId(null);
-          // The auth state change will handle the redirect to dashboard
         }
       } else {
-        console.log('Device code validation failed:', validation.message);
         setError(validation.message);
       }
     } catch (err) {
@@ -179,7 +119,6 @@ export default function LoginScreen() {
   };
 
   if (showDeviceCodeSetup && pendingDriverId) {
-    console.log('Rendering device code setup screen for driver:', pendingDriverId);
     return (
       <DeviceCodeSetupScreen
         onSubmit={handleDeviceCodeSubmit}
