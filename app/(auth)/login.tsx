@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import ErrorMessage from '../../components/ErrorMessage';
 import FormInput from '../../components/FormInput';
 import LoadingIndicator from '../../components/LoadingIndicator';
+import DeviceValidationScreen from '../../components/DeviceValidationScreen';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
 import { signIn } from '../../lib/auth';
@@ -13,6 +14,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDeviceValidation, setShowDeviceValidation] = useState(false);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -23,11 +25,16 @@ export default function LoginScreen() {
     try {
       setLoading(true);
       setError(null);
+      setShowDeviceValidation(false);
 
       const result = await signIn(email, password);
 
       if (result.error) {
-        setError(result.error.message);
+        if (result.error.deviceError) {
+          setShowDeviceValidation(true);
+        } else {
+          setError(result.error.message);
+        }
       }
     } catch (err) {
       setError('An unexpected error occurred');
@@ -36,6 +43,20 @@ export default function LoginScreen() {
       setLoading(false);
     }
   };
+
+  const handleRetryLogin = () => {
+    setShowDeviceValidation(false);
+    setError(null);
+  };
+
+  if (showDeviceValidation) {
+    return (
+      <DeviceValidationScreen
+        message="Kindly login on Company's Device only"
+        onRetry={handleRetryLogin}
+      />
+    );
+  }
 
   return (
     <View style={styles.container}>

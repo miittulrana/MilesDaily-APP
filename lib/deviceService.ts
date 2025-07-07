@@ -32,7 +32,7 @@ export const validateDriverDevice = async (driverId: string): Promise<DeviceVali
         is_valid: cachedResult,
         device_registered: cachedResult,
         device_active: cachedResult,
-        message: cachedResult ? 'Device validation successful (cached)' : 'Kindly login on Company\'s Device only'
+        message: cachedResult ? 'Device validation successful' : 'Kindly login on Company\'s Device only'
       };
     }
     
@@ -75,17 +75,7 @@ export const validateDriverDevice = async (driverId: string): Promise<DeviceVali
       is_valid: false,
       device_registered: false,
       device_active: false,
-      message: 'Device validation failed - network error'
+      message: 'Kindly login on Company\'s Device only'
     };
-  }
-};
-
-export const checkDeviceValidation = async (driverId: string): Promise<boolean> => {
-  try {
-    const result = await validateDriverDevice(driverId);
-    return result.is_valid;
-  } catch (error) {
-    console.error('Error checking device validation:', error);
-    return false;
   }
 };

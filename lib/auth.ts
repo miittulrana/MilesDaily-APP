@@ -2,54 +2,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { config } from '../constants/Config';
 import { supabase } from './supabase';
 import { backgroundLocationService } from './backgroundLocation';
-import * as Device from 'expo-device';
+import { validateDriverDevice } from './deviceService';
 
 export type AuthError = {
   message: string;
-};
-
-const getDeviceId = async (): Promise<string | null> => {
-  try {
-    const androidId = Device.osInternalBuildId;
-    return androidId || null;
-  } catch (error) {
-    console.error('Error getting device ID:', error);
-    return null;
-  }
-};
-
-const validateDevice = async (driverId: string): Promise<{ isValid: boolean; message: string }> => {
-  try {
-    const deviceId = await getDeviceId();
-    
-    if (!deviceId) {
-      return { isValid: false, message: 'Unable to get device ID' };
-    }
-    
-    const response = await fetch(config.api.deviceValidationUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        driver_id: driverId,
-        device_id: deviceId
-      }),
-    });
-    
-    if (!response.ok) {
-      return { isValid: false, message: 'Device validation failed' };
-    }
-    
-    const result = await response.json();
-    return { 
-      isValid: result.is_valid, 
-      message: result.message || (result.is_valid ? 'Device authorized' : "Kindly login on Company's Device only")
-    };
-  } catch (error) {
-    console.error('Device validation error:', error);
-    return { isValid: false, message: "Kindly login on Company's Device only" };
-  }
+  deviceError?: boolean;
 };
 
 export const signIn = async (email: string, password: string) => {
@@ -80,13 +37,15 @@ export const signIn = async (email: string, password: string) => {
         return { error: { message: 'Your account is inactive. Please contact administrator.' } };
       }
 
-      const deviceValidation = await validateDevice(driverData.id);
+      const deviceValidation = await validateDriverDevice(driverData.id);
       
-      if (!deviceValidation.isValid) {
+      if (!deviceValidation.is_valid) {
         await supabase.auth.signOut();
         return { 
-          error: { message: deviceValidation.message },
-          deviceError: true
+          error: { 
+            message: deviceValidation.message || 'Device validation failed',
+            deviceError: true
+          }
         };
       }
 
@@ -101,12 +60,9 @@ export const signIn = async (email: string, password: string) => {
         .eq('id', data.user.id);
 
       try {
-        console.log('Starting GPS tracking after login');
         const gpsStarted = await backgroundLocationService.startService();
         if (gpsStarted) {
           console.log('GPS tracking started successfully after login');
-        } else {
-          console.log('GPS tracking failed to start after login');
         }
       } catch (gpsError) {
         console.error('Error starting GPS tracking after login:', gpsError);
@@ -124,9 +80,7 @@ export const signIn = async (email: string, password: string) => {
 
 export const signOut = async () => {
   try {
-    console.log('Stopping GPS tracking before logout');
     await backgroundLocationService.stopService();
-    console.log('GPS tracking stopped before logout');
   } catch (gpsError) {
     console.error('Error stopping GPS tracking before logout:', gpsError);
   }
@@ -206,12 +160,10 @@ export const getAssignedVehicleWithTemp = async (driverId: string) => {
       .single();
 
     if (!tempError && tempAssignment?.vehicle) {
-      console.log('Found active temp assignment vehicle:', tempAssignment.vehicle);
       return tempAssignment.vehicle;
     }
 
     const permanentVehicle = await getAssignedVehicle(driverId);
-    console.log('Using permanent assigned vehicle:', permanentVehicle);
     return permanentVehicle;
   } catch (error) {
     console.error('Get assigned vehicle with temp error:', error);

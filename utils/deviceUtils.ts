@@ -9,18 +9,12 @@ export const getDeviceId = async (): Promise<string | null> => {
       return null;
     }
 
-    const deviceId = await Device.getDeviceTypeAsync();
-    const androidId = await Device.osInternalBuildId;
-    
+    const androidId = Device.osInternalBuildId;
     if (androidId) {
       return androidId;
     }
 
-    const deviceName = Device.deviceName || 'unknown';
-    const modelName = Device.modelName || 'unknown';
-    const osVersion = Device.osVersion || 'unknown';
-    
-    const fallbackId = `${deviceName}-${modelName}-${osVersion}`.replace(/\s+/g, '-');
+    const fallbackId = `${Device.deviceName || 'unknown'}-${Device.modelName || 'unknown'}-${Device.osVersion || 'unknown'}`.replace(/\s+/g, '-');
     return fallbackId;
   } catch (error) {
     console.error('Error getting device ID:', error);
