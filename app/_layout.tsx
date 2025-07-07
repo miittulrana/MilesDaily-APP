@@ -10,6 +10,7 @@ export default function RootLayout() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
+  const [initialCheckDone, setInitialCheckDone] = useState(false);
   const router = useRouter();
   const segments = useSegments();
 
@@ -37,6 +38,7 @@ export default function RootLayout() {
       console.log('Auth state changed:', event, !!session);
       const userSignedIn = !!session;
       setIsSignedIn(userSignedIn);
+      setInitialCheckDone(true);
       
       if (event === 'SIGNED_OUT' && !userSignedIn) {
         console.log('User signed out - redirecting to login');
@@ -84,18 +86,17 @@ export default function RootLayout() {
   }, [router]);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || !initialCheckDone) return;
 
     const inAuthGroup = segments[0] === '(auth)';
-    const inDashboardGroup = segments[0] === '(dashboard)';
     
-    console.log('Route check - isSignedIn:', isSignedIn, 'inAuthGroup:', inAuthGroup, 'inDashboardGroup:', inDashboardGroup, 'segments:', segments);
+    console.log('Route check - isSignedIn:', isSignedIn, 'inAuthGroup:', inAuthGroup, 'segments:', segments);
     
     if (!isSignedIn && !inAuthGroup) {
       console.log('Not signed in and not in auth group - redirecting to login');
       router.replace('/(auth)/login');
     }
-  }, [isSignedIn, isLoading, segments]);
+  }, [isSignedIn, isLoading, initialCheckDone, segments]);
 
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
