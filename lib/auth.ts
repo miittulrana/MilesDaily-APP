@@ -1,50 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { config } from '../constants/Config';
 import { supabase } from './supabase';
-import { validateDriverDeviceCode } from './deviceCodeService';
 
 export type AuthError = {
   message: string;
   deviceError?: boolean;
   requiresDeviceCode?: boolean;
-};
-
-export const verifyCredentials = async (email: string, password: string) => {
-  try {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      return { error };
-    }
-
-    if (data?.user) {
-      const { data: driverData, error: driverError } = await supabase
-        .from('drivers')
-        .select('*')
-        .eq('id', data.user.id)
-        .single();
-
-      await supabase.auth.signOut();
-
-      if (driverError) {
-        return { error: { message: 'Driver account not found' } };
-      }
-
-      if (!driverData.is_active) {
-        return { error: { message: 'Your account is inactive. Please contact administrator.' } };
-      }
-
-      return { driverInfo: driverData };
-    }
-
-    return { error: { message: 'Unknown error occurred' } };
-  } catch (error) {
-    console.error('Verify credentials error:', error);
-    return { error: { message: 'An unexpected error occurred' } };
-  }
 };
 
 export const signIn = async (email: string, password: string) => {
@@ -73,13 +34,6 @@ export const signIn = async (email: string, password: string) => {
       if (!driverData.is_active) {
         await supabase.auth.signOut();
         return { error: { message: 'Your account is inactive. Please contact administrator.' } };
-      }
-
-      const deviceValidation = await validateDriverDeviceCode(driverData.id);
-
-      if (!deviceValidation.is_valid) {
-        await supabase.auth.signOut();
-        return { error: { message: 'Device not authorized', deviceError: true } };
       }
 
       await AsyncStorage.setItem(

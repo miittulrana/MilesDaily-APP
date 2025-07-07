@@ -1,23 +1,25 @@
 import { useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
 import ErrorMessage from '../../components/ErrorMessage';
 import FormInput from '../../components/FormInput';
 import LoadingIndicator from '../../components/LoadingIndicator';
-import DeviceValidationScreen from '../../components/DeviceValidationScreen';
 import DeviceCodeSetupScreen from '../../components/DeviceCodeSetupScreen';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
-import { signIn, verifyCredentials } from '../../lib/auth';
+import { signIn } from '../../lib/auth';
 import { submitDeviceCode } from '../../lib/deviceCodeService';
 import { hasStoredDeviceCode } from '../../lib/deviceCodeStorage';
+import { supabase } from '../../lib/supabase';
 
 export default function LoginScreen() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showDeviceValidation, setShowDeviceValidation] = useState(false);
   const [showDeviceCodeSetup, setShowDeviceCodeSetup] = useState(false);
   const [pendingDriverId, setPendingDriverId] = useState<string | null>(null);
 
@@ -30,43 +32,67 @@ export default function LoginScreen() {
     try {
       setLoading(true);
       setError(null);
-      setShowDeviceValidation(false);
-      setShowDeviceCodeSetup(false);
 
-      const verificationResult = await verifyCredentials(email, password);
+      console.log('Starting login process...');
 
-      if (verificationResult.error) {
-        setError(verificationResult.error.message);
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) {
+        console.log('Auth error:', authError.message);
+        setError(authError.message);
         setLoading(false);
         return;
       }
 
-      if (!verificationResult.driverInfo) {
+      if (!data?.user) {
+        console.log('No user data received');
+        setError('Login failed');
+        setLoading(false);
+        return;
+      }
+
+      console.log('Login successful, checking driver data...');
+
+      const { data: driverData, error: driverError } = await supabase
+        .from('drivers')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+
+      if (driverError || !driverData) {
+        console.log('Driver data error:', driverError);
+        await supabase.auth.signOut();
         setError('Driver account not found');
         setLoading(false);
         return;
       }
 
-      const driverId = verificationResult.driverInfo.id;
-      const hasCode = await hasStoredDeviceCode(driverId);
+      if (!driverData.is_active) {
+        console.log('Driver inactive');
+        await supabase.auth.signOut();
+        setError('Your account is inactive');
+        setLoading(false);
+        return;
+      }
+
+      console.log('Driver found, checking device code...');
+
+      const hasCode = await hasStoredDeviceCode(driverData.id);
+      console.log('Has stored device code:', hasCode);
 
       if (!hasCode) {
+        console.log('No device code found - showing device setup screen');
         setLoading(false);
-        setPendingDriverId(driverId);
+        setPendingDriverId(driverData.id);
         setShowDeviceCodeSetup(true);
         return;
       }
 
-      const result = await signIn(email, password);
-
-      if (result.error) {
-        if (result.error.deviceError) {
-          setShowDeviceValidation(true);
-        } else {
-          setError(result.error.message);
-        }
-      }
-
+      console.log('Device code found - login complete');
+      router.replace('/(dashboard)');
       setLoading(false);
     } catch (err) {
       console.error('Login error:', err);
@@ -95,6 +121,7 @@ export default function LoginScreen() {
         } else {
           setShowDeviceCodeSetup(false);
           setPendingDriverId(null);
+          router.replace('/(dashboard)');
         }
       } else {
         setError(validation.message);
@@ -113,11 +140,6 @@ export default function LoginScreen() {
     setError(null);
   };
 
-  const handleRetryLogin = () => {
-    setShowDeviceValidation(false);
-    setError(null);
-  };
-
   if (showDeviceCodeSetup && pendingDriverId) {
     return (
       <DeviceCodeSetupScreen
@@ -125,15 +147,6 @@ export default function LoginScreen() {
         onCancel={handleDeviceCodeCancel}
         loading={loading}
         error={error}
-      />
-    );
-  }
-
-  if (showDeviceValidation) {
-    return (
-      <DeviceValidationScreen
-        message="Kindly login on Company's Device only"
-        onRetry={handleRetryLogin}
       />
     );
   }

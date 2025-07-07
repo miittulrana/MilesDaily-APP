@@ -38,11 +38,14 @@ export default function RootLayout() {
       const userSignedIn = !!session;
       setIsSignedIn(userSignedIn);
       
-      if (event === 'SIGNED_IN') {
-        console.log('User signed in');
-      } else if (event === 'SIGNED_OUT') {
-        console.log('User signed out');
-        await notificationService.stopAllWashReminders();
+      if (event === 'SIGNED_OUT' && !userSignedIn) {
+        console.log('User signed out - redirecting to login');
+        try {
+          await notificationService.stopAllWashReminders();
+        } catch (error) {
+          console.error('Error stopping notifications:', error);
+        }
+        router.replace('/(auth)/login');
       }
     });
 
@@ -91,11 +94,8 @@ export default function RootLayout() {
     if (!isSignedIn && !inAuthGroup) {
       console.log('Not signed in and not in auth group - redirecting to login');
       router.replace('/(auth)/login');
-    } else if (isSignedIn && inAuthGroup) {
-      console.log('Signed in and in auth group - redirecting to dashboard');
-      router.replace('/(dashboard)');
     }
-  }, [isSignedIn, isLoading, segments, router]);
+  }, [isSignedIn, isLoading, segments]);
 
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
