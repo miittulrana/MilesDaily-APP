@@ -2,11 +2,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { config } from '../constants/Config';
 import { supabase } from './supabase';
 import { backgroundLocationService } from './backgroundLocation';
-import { validateDriverDevice } from './deviceService';
 
 export type AuthError = {
   message: string;
   deviceError?: boolean;
+  requiresDeviceCode?: boolean;
 };
 
 export const signIn = async (email: string, password: string) => {
@@ -37,18 +37,6 @@ export const signIn = async (email: string, password: string) => {
         return { error: { message: 'Your account is inactive. Please contact administrator.' } };
       }
 
-      const deviceValidation = await validateDriverDevice(driverData.id);
-      
-      if (!deviceValidation.is_valid) {
-        await supabase.auth.signOut();
-        return { 
-          error: { 
-            message: deviceValidation.message || 'Device validation failed',
-            deviceError: true
-          }
-        };
-      }
-
       await AsyncStorage.setItem(
         config.storage.userInfoKey,
         JSON.stringify(driverData)
@@ -60,9 +48,11 @@ export const signIn = async (email: string, password: string) => {
         .eq('id', data.user.id);
 
       try {
-        const gpsStarted = await backgroundLocationService.startService();
-        if (gpsStarted) {
-          console.log('GPS tracking started successfully after login');
+        if (!__DEV__) {
+          const gpsStarted = await backgroundLocationService.startService();
+          if (gpsStarted) {
+            console.log('GPS tracking started successfully after login');
+          }
         }
       } catch (gpsError) {
         console.error('Error starting GPS tracking after login:', gpsError);
@@ -80,7 +70,9 @@ export const signIn = async (email: string, password: string) => {
 
 export const signOut = async () => {
   try {
-    await backgroundLocationService.stopService();
+    if (!__DEV__) {
+      await backgroundLocationService.stopService();
+    }
   } catch (gpsError) {
     console.error('Error stopping GPS tracking before logout:', gpsError);
   }
