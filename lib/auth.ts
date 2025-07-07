@@ -39,31 +39,6 @@ export const signIn = async (email: string, password: string) => {
         return { error: { message: 'Your account is inactive. Please contact administrator.' } };
       }
 
-      const hasDeviceCode = await hasStoredDeviceCode(driverData.id);
-      
-      if (!hasDeviceCode) {
-        await supabase.auth.signOut();
-        return { 
-          error: { 
-            message: 'Device code required', 
-            requiresDeviceCode: true 
-          } 
-        };
-      }
-
-      // If we have a stored device code, validate it once
-      const deviceValidation = await validateDriverDeviceCode(driverData.id);
-      
-      if (!deviceValidation.is_valid) {
-        await supabase.auth.signOut();
-        return { 
-          error: { 
-            message: deviceValidation.message, 
-            deviceError: true 
-          } 
-        };
-      }
-
       await AsyncStorage.setItem(
         config.storage.userInfoKey,
         JSON.stringify(driverData)
