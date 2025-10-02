@@ -20,15 +20,7 @@
       "bundleIdentifier": "com.milesxp.daily",
       "infoPlist": {
         "NSCameraUsageDescription": "This app needs camera access to take photos of washed vehicles.",
-        "NSPhotoLibraryUsageDescription": "This app needs photo library access to select vehicle wash photos.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "MXP Daily requires location access for route optimization and delivery tracking.",
-        "NSLocationAlwaysUsageDescription": "MXP Daily requires location access for route optimization and delivery tracking.",
-        "NSLocationWhenInUseUsageDescription": "MXP Daily requires location access for route optimization and delivery tracking.",
-        "UIBackgroundModes": [
-          "location",
-          "fetch",
-          "background-processing"
-        ]
+        "NSPhotoLibraryUsageDescription": "This app needs photo library access to select vehicle wash photos."
       }
     },
     "android": {
@@ -47,11 +39,6 @@
         "DISABLE_KEYGUARD",
         "USE_FULL_SCREEN_INTENT",
         "SCHEDULE_EXACT_ALARM",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION",
         "WAKE_LOCK"
       ]
     },
@@ -68,17 +55,9 @@
           "defaultChannel": "fleet-service"
         }
       ],
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "MXP Daily requires location access for route optimization and delivery tracking.",
-          "locationAlwaysPermission": "MXP Daily requires location access for route optimization and delivery tracking.",
-          "locationWhenInUsePermission": "MXP Daily requires location access for route optimization and delivery tracking.",
-          "isIosBackgroundLocationEnabled": true,
-          "isAndroidBackgroundLocationEnabled": true,
-          "isAndroidForegroundServiceEnabled": true
-        }
-      ]
+      "expo-font",
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "scheme": "fleet-management",
     "extra": {

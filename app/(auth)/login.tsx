@@ -1,18 +1,13 @@
 import { useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import ErrorMessage from '../../components/ErrorMessage';
 import FormInput from '../../components/FormInput';
 import LoadingIndicator from '../../components/LoadingIndicator';
-import DeviceCodeSetupScreen from '../../components/DeviceCodeSetupScreen';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
 import { signIn } from '../../lib/auth';
-import { submitDeviceCode } from '../../lib/deviceCodeService';
-import { hasStoredDeviceCode } from '../../lib/deviceCodeStorage';
-import { supabase } from '../../lib/supabase';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -20,8 +15,6 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showDeviceCodeSetup, setShowDeviceCodeSetup] = useState(false);
-  const [pendingDriverId, setPendingDriverId] = useState<string | null>(null);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -33,65 +26,14 @@ export default function LoginScreen() {
       setLoading(true);
       setError(null);
 
-      console.log('Starting login process...');
+      const result = await signIn(email, password);
 
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (authError) {
-        console.log('Auth error:', authError.message);
-        setError(authError.message);
+      if (result.error) {
+        setError(result.error.message);
         setLoading(false);
         return;
       }
 
-      if (!data?.user) {
-        console.log('No user data received');
-        setError('Login failed');
-        setLoading(false);
-        return;
-      }
-
-      console.log('Login successful, checking driver data...');
-
-      const { data: driverData, error: driverError } = await supabase
-        .from('drivers')
-        .select('*')
-        .eq('id', data.user.id)
-        .single();
-
-      if (driverError || !driverData) {
-        console.log('Driver data error:', driverError);
-        await supabase.auth.signOut();
-        setError('Driver account not found');
-        setLoading(false);
-        return;
-      }
-
-      if (!driverData.is_active) {
-        console.log('Driver inactive');
-        await supabase.auth.signOut();
-        setError('Your account is inactive');
-        setLoading(false);
-        return;
-      }
-
-      console.log('Driver found, checking device code...');
-
-      const hasCode = await hasStoredDeviceCode(driverData.id);
-      console.log('Has stored device code:', hasCode);
-
-      if (!hasCode) {
-        console.log('No device code found - showing device setup screen');
-        setLoading(false);
-        setPendingDriverId(driverData.id);
-        setShowDeviceCodeSetup(true);
-        return;
-      }
-
-      console.log('Device code found - login complete');
       router.replace('/(dashboard)');
       setLoading(false);
     } catch (err) {
@@ -100,56 +42,6 @@ export default function LoginScreen() {
       setLoading(false);
     }
   };
-
-  const handleDeviceCodeSubmit = async (deviceCode: string) => {
-    if (!pendingDriverId) {
-      setError('Driver ID not found');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const validation = await submitDeviceCode(pendingDriverId, deviceCode);
-
-      if (validation.is_valid) {
-        const result = await signIn(email, password);
-
-        if (result.error) {
-          setError(result.error.message);
-        } else {
-          setShowDeviceCodeSetup(false);
-          setPendingDriverId(null);
-          router.replace('/(dashboard)');
-        }
-      } else {
-        setError(validation.message);
-      }
-    } catch (err) {
-      console.error('Device code submission error:', err);
-      setError('Device code validation failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeviceCodeCancel = () => {
-    setShowDeviceCodeSetup(false);
-    setPendingDriverId(null);
-    setError(null);
-  };
-
-  if (showDeviceCodeSetup && pendingDriverId) {
-    return (
-      <DeviceCodeSetupScreen
-        onSubmit={handleDeviceCodeSubmit}
-        onCancel={handleDeviceCodeCancel}
-        loading={loading}
-        error={error}
-      />
-    );
-  }
 
   return (
     <View style={styles.container}>

@@ -1,12 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { config } from '../constants/Config';
 import { supabase } from './supabase';
-import { gpsService } from './gpsService';
 
 export type AuthError = {
   message: string;
-  deviceError?: boolean;
-  requiresDeviceCode?: boolean;
 };
 
 export const signIn = async (email: string, password: string) => {
@@ -47,8 +44,6 @@ export const signIn = async (email: string, password: string) => {
         .update({ last_login: new Date().toISOString() })
         .eq('id', data.user.id);
 
-      await gpsService.startTracking(driverData.id);
-
       return { session: data.session, user: data.user, driverInfo: driverData };
     }
 
@@ -60,7 +55,6 @@ export const signIn = async (email: string, password: string) => {
 };
 
 export const signOut = async () => {
-  await gpsService.stopTracking();
   await supabase.auth.signOut();
   await AsyncStorage.removeItem(config.storage.userInfoKey);
 };
