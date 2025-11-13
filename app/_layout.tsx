@@ -2,7 +2,8 @@ import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { KeyboardAvoidingView, Platform, AppState, AppStateStatus } from 'react-native';
+import { KeyboardAvoidingView, Platform, AppState, AppStateStatus, Alert, View, Text } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../lib/supabase';
 import { notificationService } from '../lib/notificationService';
 
@@ -11,28 +12,77 @@ export default function RootLayout() {
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const [initialCheckDone, setInitialCheckDone] = useState(false);
+  const [isConnected, setIsConnected] = useState(true);
+  const [initError, setInitError] = useState<string | null>(null);
   const router = useRouter();
   const segments = useSegments();
 
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        await notificationService.initializeNotifications();
-        console.log('Notification service initialized in root layout');
+        console.log('Initializing app...');
         
+        // Check network connectivity first
+        const networkState = await NetInfo.fetch();
+        console.log('Network state:', networkState);
+        setIsConnected(networkState.isConnected ?? false);
+        
+        if (!networkState.isConnected) {
+          setInitError('No internet connection');
+          setIsLoading(false);
+          return;
+        }
+
+        // Initialize notifications
+        try {
+          await notificationService.initializeNotifications();
+          console.log('Notification service initialized');
+        } catch (notifError) {
+          console.warn('Notification initialization failed:', notifError);
+          // Don't block app initialization for notification errors
+        }
+        
+        // Check authentication
+        console.log('Checking auth session...');
         const { data, error } = await supabase.auth.getSession();
-        const userSignedIn = !!data.session;
-        setIsSignedIn(userSignedIn);
+        
+        if (error) {
+          console.error('Auth session error:', error);
+          setInitError(`Authentication error: ${error.message}`);
+          setIsSignedIn(false);
+        } else {
+          const userSignedIn = !!data.session;
+          console.log('User signed in:', userSignedIn);
+          setIsSignedIn(userSignedIn);
+        }
         
       } catch (err) {
-        console.error('Error initializing app:', err);
+        console.error('App initialization error:', err);
+        setInitError(`Initialization failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
         setIsSignedIn(false);
       } finally {
         setIsLoading(false);
+        setInitialCheckDone(true);
       }
     };
 
     initializeApp();
+
+    // Set up network listener
+    const unsubscribeNetInfo = NetInfo.addEventListener(state => {
+      console.log('Network state changed:', state);
+      setIsConnected(state.isConnected ?? false);
+      
+      if (!state.isConnected) {
+        setInitError('No internet connection');
+      } else if (initError === 'No internet connection') {
+        setInitError(null);
+        // Retry initialization if network is back
+        if (!initialCheckDone) {
+          initializeApp();
+        }
+      }
+    });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state changed:', event, !!session);
@@ -82,6 +132,7 @@ export default function RootLayout() {
       authListener.subscription.unsubscribe();
       responseSubscription.remove();
       receivedSubscription.remove();
+      unsubscribeNetInfo();
     };
   }, [router]);
 
@@ -111,8 +162,35 @@ export default function RootLayout() {
     };
   }, [appState]);
 
+  // Show loading or error state
   if (isLoading) {
-    return null;
+    return (
+      <SafeAreaProvider>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+          <Text>Loading...</Text>
+        </View>
+      </SafeAreaProvider>
+    );
+  }
+
+  if (initError) {
+    return (
+      <SafeAreaProvider>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff', padding: 20 }}>
+          <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' }}>
+            Connection Error
+          </Text>
+          <Text style={{ textAlign: 'center', marginBottom: 20 }}>
+            {initError}
+          </Text>
+          {!isConnected && (
+            <Text style={{ textAlign: 'center', fontSize: 14, color: '#666' }}>
+              Please check your internet connection and try again.
+            </Text>
+          )}
+        </View>
+      </SafeAreaProvider>
+    );
   }
 
   return (

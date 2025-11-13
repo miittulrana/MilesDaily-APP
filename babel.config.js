@@ -3,6 +3,6 @@ module.exports = function(api) {
   return {
     presets: ['babel-preset-expo'],
     // Remove the deprecated plugin as per the warning
-    // plugins: ['expo-router/babel'],
+   // plugins: ['expo-router/babel'],
   };
 };
