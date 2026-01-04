@@ -27,6 +27,12 @@ export default function DashboardLayout() {
         }}
       />
       <Stack.Screen
+        name="bookings"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
         name="documents/index"
         options={{
           headerShown: true,

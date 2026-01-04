@@ -96,6 +96,8 @@ export default function DashboardScreen() {
       router.push('/(dashboard)/uniforms');
     } else if (module === 'important-numbers') {
       router.push('/(dashboard)/important-numbers');
+    } else if (module === 'bookings') {
+      router.push('/(dashboard)/bookings');
     }
   };
 
@@ -149,67 +151,76 @@ export default function DashboardScreen() {
       <View style={styles.modulesGrid}>
         <View style={styles.moduleRow}>
           <ModuleCard
+            title="Bookings"
+            iconName="cube-outline"
+            onPress={() => navigateToModule('bookings')}
+          />
+          <ModuleCard
             title="Documents"
             iconName="document-text-outline"
             onPress={() => navigateToModule('documents')}
           />
+        </View>
+        
+        <View style={styles.moduleRow}>
           <ModuleCard
             title="Fuel"
             iconName="water"
             onPress={() => navigateToModule('fuel')}
           />
-        </View>
-        
-        <View style={styles.moduleRow}>
           <ModuleCard
             title="Truck Log"
             iconName="time-outline"
             onPress={() => navigateToModule('truck-log')}
           />
+        </View>
+        
+        <View style={styles.moduleRow}>
           <ModuleCard
             title="Wash"
             iconName="car-outline"
             onPress={() => navigateToModule('wash')}
           />
-        </View>
-        
-        <View style={styles.moduleRow}>
           <ModuleCard
             title="Minor Repairs"
             iconName="construct-outline"
             onPress={() => navigateToModule('minor-repairs')}
           />
+        </View>
+        
+        <View style={styles.moduleRow}>
           <ModuleCard
             title="Accident"
             iconName="warning-outline"
             onPress={() => navigateToModule('accident')}
           />
-        </View>
-        
-        <View style={styles.moduleRow}>
           <ModuleCard
             title="Damage Log"
             iconName="alert-circle-outline"
             onPress={() => navigateToModule('damage-log')}
           />
+        </View>
+        
+        <View style={styles.moduleRow}>
           <ModuleCard
             title="Breakdown"
             iconName="construct-outline"
             onPress={() => navigateToModule('breakdown')}
           />
-        </View>
-        
-        <View style={styles.moduleRow}>
           <ModuleCard
             title="Uniforms"
             iconName="shirt-outline"
             onPress={() => navigateToModule('uniforms')}
           />
+        </View>
+        
+        <View style={styles.moduleRow}>
           <ModuleCard
             title="Important Numbers"
             iconName="call-outline"
             onPress={() => navigateToModule('important-numbers')}
           />
+          <View style={styles.moduleCardPlaceholder} />
         </View>
       </View>
     </ScrollView>
