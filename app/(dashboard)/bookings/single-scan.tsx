@@ -22,7 +22,6 @@ import LoadingIndicator from '../../../components/LoadingIndicator';
 
 export default function SingleScanScreen() {
   const router = useRouter();
-  const [scanMode, setScanMode] = useState<'camera' | 'manual'>('camera');
   const [scanning, setScanning] = useState(true);
   const [loading, setLoading] = useState(false);
   const [booking, setBooking] = useState<Booking | null>(null);
@@ -115,7 +114,6 @@ export default function SingleScanScreen() {
             setSelectedStatus(null);
             setShowStatusSelector(false);
             setManualSearch('');
-            setScanMode('camera');
             setScanning(true);
           },
         },
@@ -130,7 +128,6 @@ export default function SingleScanScreen() {
     setSelectedStatus(null);
     setShowStatusSelector(false);
     setManualSearch('');
-    setScanMode('camera');
     setScanning(true);
   };
 
@@ -144,67 +141,43 @@ export default function SingleScanScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       {scanning && !showStatusSelector && (
-        <View style={styles.scanContainer}>
-          {scanMode === 'camera' ? (
-            <BarcodeScanner onScan={handleBarcodeScan} />
-          ) : (
-            <View style={styles.manualSearchContainer}>
-              <Ionicons name="search" size={64} color={colors.primary} style={styles.searchIcon} />
-              <Text style={styles.manualSearchTitle}>Manual Search</Text>
-              <Text style={styles.manualSearchSubtitle}>
-                Enter booking number to search
-              </Text>
-              
-              <View style={styles.searchInputContainer}>
-                <Ionicons name="barcode-outline" size={20} color={colors.gray400} />
-                <TextInput
-                  style={styles.searchInput}
-                  value={manualSearch}
-                  onChangeText={setManualSearch}
-                  placeholder="Enter booking number..."
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  autoFocus
-                  returnKeyType="search"
-                  onSubmitEditing={handleManualSearch}
-                />
-                {manualSearch.length > 0 && (
-                  <TouchableOpacity onPress={() => setManualSearch('')}>
-                    <Ionicons name="close-circle" size={20} color={colors.gray400} />
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              <TouchableOpacity
-                style={[styles.searchButton, !manualSearch.trim() && styles.searchButtonDisabled]}
-                onPress={handleManualSearch}
-                disabled={!manualSearch.trim()}
-              >
-                <Ionicons name="search" size={20} color={colors.background} />
-                <Text style={styles.searchButtonText}>Search</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <View style={styles.toggleContainer}>
-            <TouchableOpacity
-              style={styles.toggleButton}
-              onPress={() => {
-                setScanMode(scanMode === 'camera' ? 'manual' : 'camera');
-                setManualSearch('');
-              }}
-            >
-              <Ionicons
-                name={scanMode === 'camera' ? 'keypad-outline' : 'camera-outline'}
-                size={24}
-                color={colors.background}
+        <>
+          {/* Manual Search Bar - ABOVE camera */}
+          <View style={styles.manualSearchBar}>
+            <View style={styles.searchInputContainer}>
+              <Ionicons name="barcode-outline" size={20} color="#6B7280" />
+              <TextInput
+                style={styles.searchInput}
+                value={manualSearch}
+                onChangeText={setManualSearch}
+                placeholder="Enter booking number..."
+                placeholderTextColor="#9CA3AF"
+                autoCapitalize="characters"
+                autoCorrect={false}
+                returnKeyType="search"
+                onSubmitEditing={handleManualSearch}
               />
-              <Text style={styles.toggleButtonText}>
-                {scanMode === 'camera' ? 'Manual Search' : 'Scan Camera'}
-              </Text>
+              {manualSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setManualSearch('')}>
+                  <Ionicons name="close-circle" size={20} color="#6B7280" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.searchButton, !manualSearch.trim() && styles.searchButtonDisabled]}
+              onPress={handleManualSearch}
+              disabled={!manualSearch.trim()}
+            >
+              <Ionicons name="search" size={22} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
-        </View>
+
+          {/* Camera Scanner - BELOW search bar */}
+          <View style={styles.scanContainer}>
+            <BarcodeScanner onScan={handleBarcodeScan} />
+          </View>
+        </>
       )}
 
       {booking && showStatusSelector && (
@@ -254,6 +227,50 @@ const styles = StyleSheet.create({
   },
   scanContainer: {
     flex: 1,
+  },
+  manualSearchBar: {
+    flexDirection: 'row',
+    padding: layouts.spacing.md,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 2,
+    borderBottomColor: '#E5E7EB',
+    gap: layouts.spacing.sm,
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  searchInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: layouts.borderRadius.lg,
+    paddingHorizontal: layouts.spacing.md,
+    paddingVertical: 12,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#111827',
+    marginLeft: layouts.spacing.sm,
+    paddingVertical: layouts.spacing.xs,
+    fontWeight: '500',
+  },
+  searchButton: {
+    backgroundColor: colors.primary,
+    width: 48,
+    height: 48,
+    borderRadius: layouts.borderRadius.lg,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchButtonDisabled: {
+    backgroundColor: colors.gray400,
   },
   content: {
     flex: 1,
@@ -316,91 +333,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
-  },
-  manualSearchContainer: {
-    flex: 1,
-    padding: layouts.spacing.xl,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-  },
-  searchIcon: {
-    marginBottom: layouts.spacing.lg,
-  },
-  manualSearchTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: layouts.spacing.xs,
-    textAlign: 'center',
-  },
-  manualSearchSubtitle: {
-    fontSize: 16,
-    color: colors.textLight,
-    marginBottom: layouts.spacing.xl,
-    textAlign: 'center',
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: layouts.borderRadius.lg,
-    paddingHorizontal: layouts.spacing.md,
-    paddingVertical: layouts.spacing.md,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    marginBottom: layouts.spacing.lg,
-    width: '100%',
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 18,
-    color: colors.text,
-    marginLeft: layouts.spacing.sm,
-    paddingVertical: layouts.spacing.xs,
-  },
-  searchButton: {
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: layouts.spacing.md,
-    paddingHorizontal: layouts.spacing.xl,
-    borderRadius: layouts.borderRadius.lg,
-    gap: layouts.spacing.sm,
-    width: '100%',
-  },
-  searchButtonDisabled: {
-    backgroundColor: colors.gray400,
-  },
-  searchButtonText: {
-    color: colors.background,
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  toggleContainer: {
-    position: 'absolute',
-    bottom: layouts.spacing.xl,
-    left: layouts.spacing.lg,
-    right: layouts.spacing.lg,
-  },
-  toggleButton: {
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: layouts.spacing.md,
-    borderRadius: layouts.borderRadius.lg,
-    gap: layouts.spacing.sm,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  toggleButtonText: {
-    color: colors.background,
-    fontSize: 16,
-    fontWeight: '600',
   },
 });
