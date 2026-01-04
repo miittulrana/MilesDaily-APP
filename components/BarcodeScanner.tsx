@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Alert, TextInput } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { colors } from '../constants/Colors';
 import { layouts } from '../constants/layouts';
 
@@ -11,6 +12,7 @@ interface BarcodeScannerProps {
 }
 
 export default function BarcodeScanner({ onScan, onManualSearch }: BarcodeScannerProps) {
+  const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
@@ -61,8 +63,17 @@ export default function BarcodeScanner({ onScan, onManualSearch }: BarcodeScanne
         }}
       >
         <View style={styles.overlay}>
-          {/* Top overlay with manual search */}
+          {/* Top overlay with back button and manual search */}
           <View style={styles.topOverlay}>
+            {/* Back button */}
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={() => router.back()}
+            >
+              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            {/* Manual search */}
             <View style={styles.manualSearchContainer}>
               <View style={styles.searchInputWrapper}>
                 <Ionicons name="barcode-outline" size={18} color="#FFFFFF" />
@@ -138,8 +149,19 @@ const styles = StyleSheet.create({
   topOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
+    paddingTop: 60, // Account for notch
     paddingHorizontal: 16,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   manualSearchContainer: {
     flexDirection: 'row',

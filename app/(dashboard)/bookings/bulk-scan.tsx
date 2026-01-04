@@ -8,9 +8,6 @@ import {
   TouchableOpacity,
   ScrollView,
   FlatList,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../../constants/Colors';
@@ -29,7 +26,6 @@ export default function BulkScanScreen() {
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<Status | null>(null);
   const [showStatusSelector, setShowStatusSelector] = useState(false);
-  const [manualSearch, setManualSearch] = useState('');
 
   useEffect(() => {
     loadStatuses();
@@ -66,7 +62,6 @@ export default function BulkScanScreen() {
     if (alreadyScanned) {
       Alert.alert('Already Scanned', 'This booking is already in the list');
       setLoading(false);
-      setManualSearch('');
       return;
     }
 
@@ -81,15 +76,14 @@ export default function BulkScanScreen() {
     ]);
 
     setLoading(false);
-    setManualSearch('');
   };
 
   const handleBarcodeScan = async (barcode: string) => {
     await handleSearch(barcode);
   };
 
-  const handleManualSearch = () => {
-    handleSearch(manualSearch);
+  const handleManualSearch = async (barcode: string) => {
+    await handleSearch(barcode);
   };
 
   const handleRemoveBooking = (booking_id: number) => {
@@ -182,67 +176,32 @@ export default function BulkScanScreen() {
   }
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <View style={styles.container}>
       {scanning && !showStatusSelector && (
-        <>
-          {/* Manual Search Bar - ABOVE camera */}
-          <View style={styles.manualSearchBar}>
-            <View style={styles.searchInputContainer}>
-              <Ionicons name="barcode-outline" size={20} color="#6B7280" />
-              <TextInput
-                style={styles.searchInput}
-                value={manualSearch}
-                onChangeText={setManualSearch}
-                placeholder="Enter booking number..."
-                placeholderTextColor="#9CA3AF"
-                autoCapitalize="characters"
-                autoCorrect={false}
-                returnKeyType="search"
-                onSubmitEditing={handleManualSearch}
-              />
-              {manualSearch.length > 0 && (
-                <TouchableOpacity onPress={() => setManualSearch('')}>
-                  <Ionicons name="close-circle" size={20} color="#6B7280" />
-                </TouchableOpacity>
-              )}
-            </View>
+        <View style={styles.scanContainer}>
+          {/* Camera Scanner with built-in search */}
+          <BarcodeScanner 
+            onScan={handleBarcodeScan}
+            onManualSearch={handleManualSearch}
+          />
 
-            <TouchableOpacity
-              style={[styles.searchButton, !manualSearch.trim() && styles.searchButtonDisabled]}
-              onPress={handleManualSearch}
-              disabled={!manualSearch.trim()}
-            >
-              <Ionicons name="add-circle" size={26} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Camera Scanner - BELOW search bar */}
-          <View style={styles.scanContainer}>
-            <BarcodeScanner onScan={handleBarcodeScan} />
-
-            {/* Bottom Controls */}
+          {/* Bottom Controls - floating over camera */}
+          {scannedBookings.length > 0 && (
             <View style={styles.bottomControls}>
-              {scannedBookings.length > 0 && (
-                <>
-                  <View style={styles.counterCard}>
-                    <Text style={styles.counterLabel}>Scanned</Text>
-                    <Text style={styles.counterValue}>{scannedBookings.length}</Text>
-                  </View>
+              <View style={styles.counterCard}>
+                <Text style={styles.counterLabel}>Scanned</Text>
+                <Text style={styles.counterValue}>{scannedBookings.length}</Text>
+              </View>
 
-                  <TouchableOpacity
-                    style={styles.doneButton}
-                    onPress={handleDoneScanning}
-                  >
-                    <Text style={styles.doneButtonText}>Done - Continue</Text>
-                  </TouchableOpacity>
-                </>
-              )}
+              <TouchableOpacity
+                style={styles.doneButton}
+                onPress={handleDoneScanning}
+              >
+                <Text style={styles.doneButtonText}>Done - Continue</Text>
+              </TouchableOpacity>
             </View>
-          </View>
-        </>
+          )}
+        </View>
       )}
 
       {showStatusSelector && (
@@ -282,7 +241,7 @@ export default function BulkScanScreen() {
           </TouchableOpacity>
         </ScrollView>
       )}
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -293,50 +252,6 @@ const styles = StyleSheet.create({
   },
   scanContainer: {
     flex: 1,
-  },
-  manualSearchBar: {
-    flexDirection: 'row',
-    padding: layouts.spacing.md,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 2,
-    borderBottomColor: '#E5E7EB',
-    gap: layouts.spacing.sm,
-    zIndex: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  searchInputContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderRadius: layouts.borderRadius.lg,
-    paddingHorizontal: layouts.spacing.md,
-    paddingVertical: 12,
-    borderWidth: 2,
-    borderColor: '#D1D5DB',
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: '#111827',
-    marginLeft: layouts.spacing.sm,
-    paddingVertical: layouts.spacing.xs,
-    fontWeight: '500',
-  },
-  searchButton: {
-    backgroundColor: colors.primary,
-    width: 48,
-    height: 48,
-    borderRadius: layouts.borderRadius.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  searchButtonDisabled: {
-    backgroundColor: colors.gray400,
   },
   bottomControls: {
     position: 'absolute',
