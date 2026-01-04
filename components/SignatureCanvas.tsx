@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { StyleSheet, View, TouchableOpacity, Text } from 'react-native';
 import { WebView } from 'react-native-webview';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/Colors';
 import { layouts } from '../constants/layouts';
@@ -37,6 +37,7 @@ export default function SignatureCanvas({ onSignature }: SignatureCanvasProps) {
         const base64Data = message.data.split(',')[1];
         const filename = `${FileSystem.cacheDirectory}signature_${Date.now()}.png`;
         
+        // Use legacy API with Base64 encoding
         await FileSystem.writeAsStringAsync(filename, base64Data, {
           encoding: FileSystem.EncodingType.Base64,
         });
