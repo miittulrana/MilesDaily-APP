@@ -1,1 +1,1 @@
-20
+echo "legacy-peer-deps=true" > .npmrc

@@ -1,14 +1,18 @@
 {
   "build": {
-    "preview": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
       "android": {
         "buildType": "apk",
-        "gradleCommand": ":app:assembleRelease"
-      },
-      "node": "20.18.0",
-      "npm": {
-        "install": "npm ci --legacy-peer-deps"
+        "gradleCommand": ":app:assembleDebug"
       }
+    },
+    "preview": {
+      "android": {
+        "buildType": "apk"
+      },
+      "distribution": "internal"
     }
   }
 }
