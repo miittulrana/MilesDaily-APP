@@ -7,9 +7,6 @@ import {
   Alert,
   TouchableOpacity,
   ScrollView,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../../constants/Colors';
@@ -28,7 +25,6 @@ export default function SingleScanScreen() {
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<Status | null>(null);
   const [showStatusSelector, setShowStatusSelector] = useState(false);
-  const [manualSearch, setManualSearch] = useState('');
 
   useEffect(() => {
     loadStatuses();
@@ -68,8 +64,9 @@ export default function SingleScanScreen() {
     await handleSearch(barcode);
   };
 
-  const handleManualSearch = () => {
-    handleSearch(manualSearch);
+  const handleManualSearch = async (barcode: string) => {
+    setScanning(false);
+    await handleSearch(barcode);
   };
 
   const handleStatusSelect = (status: Status) => {
@@ -113,7 +110,6 @@ export default function SingleScanScreen() {
             setBooking(null);
             setSelectedStatus(null);
             setShowStatusSelector(false);
-            setManualSearch('');
             setScanning(true);
           },
         },
@@ -127,7 +123,6 @@ export default function SingleScanScreen() {
     setBooking(null);
     setSelectedStatus(null);
     setShowStatusSelector(false);
-    setManualSearch('');
     setScanning(true);
   };
 
@@ -136,52 +131,24 @@ export default function SingleScanScreen() {
   }
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <View style={styles.container}>
       {scanning && !showStatusSelector && (
-        <>
-          {/* Manual Search Bar - ABOVE camera */}
-          <View style={styles.manualSearchBar}>
-            <View style={styles.searchInputContainer}>
-              <Ionicons name="barcode-outline" size={20} color="#6B7280" />
-              <TextInput
-                style={styles.searchInput}
-                value={manualSearch}
-                onChangeText={setManualSearch}
-                placeholder="Enter booking number..."
-                placeholderTextColor="#9CA3AF"
-                autoCapitalize="characters"
-                autoCorrect={false}
-                returnKeyType="search"
-                onSubmitEditing={handleManualSearch}
-              />
-              {manualSearch.length > 0 && (
-                <TouchableOpacity onPress={() => setManualSearch('')}>
-                  <Ionicons name="close-circle" size={20} color="#6B7280" />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <TouchableOpacity
-              style={[styles.searchButton, !manualSearch.trim() && styles.searchButtonDisabled]}
-              onPress={handleManualSearch}
-              disabled={!manualSearch.trim()}
-            >
-              <Ionicons name="search" size={22} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Camera Scanner - BELOW search bar */}
-          <View style={styles.scanContainer}>
-            <BarcodeScanner onScan={handleBarcodeScan} />
-          </View>
-        </>
+        <BarcodeScanner 
+          onScan={handleBarcodeScan}
+          onManualSearch={handleManualSearch}
+        />
       )}
 
       {booking && showStatusSelector && (
         <ScrollView style={styles.content}>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={handleCancel}
+          >
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
+            <Text style={styles.backButtonText}>Back to Scan</Text>
+          </TouchableOpacity>
+
           <View style={styles.bookingCard}>
             <View style={styles.bookingHeader}>
               <Ionicons name="cube-outline" size={32} color={colors.primary} />
@@ -210,13 +177,9 @@ export default function SingleScanScreen() {
             <Text style={styles.sectionTitle}>Select Status</Text>
             <StatusSelector statuses={statuses} onSelect={handleStatusSelect} />
           </View>
-
-          <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
         </ScrollView>
       )}
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -225,56 +188,20 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  scanContainer: {
-    flex: 1,
-  },
-  manualSearchBar: {
-    flexDirection: 'row',
-    padding: layouts.spacing.md,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 2,
-    borderBottomColor: '#E5E7EB',
-    gap: layouts.spacing.sm,
-    zIndex: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  searchInputContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderRadius: layouts.borderRadius.lg,
-    paddingHorizontal: layouts.spacing.md,
-    paddingVertical: 12,
-    borderWidth: 2,
-    borderColor: '#D1D5DB',
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: '#111827',
-    marginLeft: layouts.spacing.sm,
-    paddingVertical: layouts.spacing.xs,
-    fontWeight: '500',
-  },
-  searchButton: {
-    backgroundColor: colors.primary,
-    width: 48,
-    height: 48,
-    borderRadius: layouts.borderRadius.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  searchButtonDisabled: {
-    backgroundColor: colors.gray400,
-  },
   content: {
     flex: 1,
     padding: layouts.spacing.lg,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: layouts.spacing.md,
+    gap: layouts.spacing.sm,
+  },
+  backButtonText: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '600',
   },
   bookingCard: {
     backgroundColor: colors.card,
@@ -322,16 +249,5 @@ const styles = StyleSheet.create({
   },
   statusSection: {
     marginBottom: layouts.spacing.lg,
-  },
-  cancelButton: {
-    backgroundColor: colors.gray200,
-    padding: layouts.spacing.md,
-    borderRadius: layouts.borderRadius.md,
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
   },
 });

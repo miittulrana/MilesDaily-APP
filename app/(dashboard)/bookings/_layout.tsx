@@ -37,14 +37,14 @@ export default function BookingsLayout() {
       <Stack.Screen
         name="single-scan"
         options={{
-          headerShown: true,
+          headerShown: false,
           title: 'Single Scan',
         }}
       />
       <Stack.Screen
         name="bulk-scan"
         options={{
-          headerShown: true,
+          headerShown: false,
           title: 'Bulk Scan',
         }}
       />

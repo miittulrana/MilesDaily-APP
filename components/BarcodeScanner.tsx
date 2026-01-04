@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Alert } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Alert, TextInput } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/Colors';
@@ -7,12 +7,14 @@ import { layouts } from '../constants/layouts';
 
 interface BarcodeScannerProps {
   onScan: (barcode: string) => void;
+  onManualSearch?: (barcode: string) => void;
 }
 
-export default function BarcodeScanner({ onScan }: BarcodeScannerProps) {
+export default function BarcodeScanner({ onScan, onManualSearch }: BarcodeScannerProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
+  const [manualInput, setManualInput] = useState('');
 
   if (!permission) {
     return <View style={styles.container} />;
@@ -41,6 +43,13 @@ export default function BarcodeScanner({ onScan }: BarcodeScannerProps) {
     }, 2000);
   };
 
+  const handleManualSubmit = () => {
+    if (manualInput.trim() && onManualSearch) {
+      onManualSearch(manualInput.trim());
+      setManualInput('');
+    }
+  };
+
   return (
     <View style={styles.container}>
       <CameraView
@@ -52,7 +61,38 @@ export default function BarcodeScanner({ onScan }: BarcodeScannerProps) {
         }}
       >
         <View style={styles.overlay}>
-          <View style={styles.topOverlay} />
+          {/* Top overlay with manual search */}
+          <View style={styles.topOverlay}>
+            <View style={styles.manualSearchContainer}>
+              <View style={styles.searchInputWrapper}>
+                <Ionicons name="barcode-outline" size={18} color="#FFFFFF" />
+                <TextInput
+                  style={styles.manualSearchInput}
+                  value={manualInput}
+                  onChangeText={setManualInput}
+                  placeholder="Type booking number..."
+                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                  onSubmitEditing={handleManualSubmit}
+                />
+                {manualInput.length > 0 && (
+                  <TouchableOpacity onPress={() => setManualInput('')}>
+                    <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.8)" />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <TouchableOpacity
+                style={[styles.searchButton, !manualInput.trim() && styles.searchButtonDisabled]}
+                onPress={handleManualSubmit}
+                disabled={!manualInput.trim()}
+              >
+                <Ionicons name="search" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
           <View style={styles.middleRow}>
             <View style={styles.sideOverlay} />
             <View style={styles.scanArea}>
@@ -63,6 +103,7 @@ export default function BarcodeScanner({ onScan }: BarcodeScannerProps) {
             </View>
             <View style={styles.sideOverlay} />
           </View>
+
           <View style={styles.bottomOverlay}>
             <TouchableOpacity
               style={styles.torchButton}
@@ -97,6 +138,42 @@ const styles = StyleSheet.create({
   topOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  manualSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  searchInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    gap: 8,
+  },
+  manualSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '500',
+  },
+  searchButton: {
+    backgroundColor: colors.primary,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchButtonDisabled: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   middleRow: {
     flexDirection: 'row',
