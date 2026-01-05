@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import { StyleSheet, View, TouchableOpacity, Text } from 'react-native';
 import { WebView } from 'react-native-webview';
-import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/Colors';
 import { layouts } from '../constants/layouts';
@@ -29,21 +28,14 @@ export default function SignatureCanvas({ onSignature }: SignatureCanvasProps) {
     `);
   };
 
-  const handleMessage = async (event: any) => {
+  const handleMessage = (event: any) => {
     try {
       const message = JSON.parse(event.nativeEvent.data);
       
       if (message.type === 'signature' && message.data) {
         const base64Data = message.data.split(',')[1];
-        const filename = `${FileSystem.cacheDirectory}signature_${Date.now()}.png`;
-        
-        // Use legacy API with Base64 encoding
-        await FileSystem.writeAsStringAsync(filename, base64Data, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        
         setHasSignature(true);
-        onSignature(filename);
+        onSignature(base64Data);
       } else if (message.type === 'stroke') {
         if (!hasSignature) {
           handleSave();

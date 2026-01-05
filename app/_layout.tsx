@@ -6,6 +6,7 @@ import { KeyboardAvoidingView, Platform, AppState, AppStateStatus, Alert, View, 
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../lib/supabase';
 import { notificationService } from '../lib/notificationService';
+import { initOfflineQueue } from '../lib/offlineQueue';
 
 export default function RootLayout() {
   const [isLoading, setIsLoading] = useState(true);
@@ -22,7 +23,6 @@ export default function RootLayout() {
       try {
         console.log('Initializing app...');
         
-        // Check network connectivity first
         const networkState = await NetInfo.fetch();
         console.log('Network state:', networkState);
         setIsConnected(networkState.isConnected ?? false);
@@ -33,16 +33,20 @@ export default function RootLayout() {
           return;
         }
 
-        // Initialize notifications
+        try {
+          await initOfflineQueue();
+          console.log('Offline queue initialized');
+        } catch (queueError) {
+          console.warn('Offline queue initialization failed:', queueError);
+        }
+
         try {
           await notificationService.initializeNotifications();
           console.log('Notification service initialized');
         } catch (notifError) {
           console.warn('Notification initialization failed:', notifError);
-          // Don't block app initialization for notification errors
         }
         
-        // Check authentication
         console.log('Checking auth session...');
         const { data, error } = await supabase.auth.getSession();
         
@@ -68,7 +72,6 @@ export default function RootLayout() {
 
     initializeApp();
 
-    // Set up network listener
     const unsubscribeNetInfo = NetInfo.addEventListener(state => {
       console.log('Network state changed:', state);
       setIsConnected(state.isConnected ?? false);
@@ -77,7 +80,6 @@ export default function RootLayout() {
         setInitError('No internet connection');
       } else if (initError === 'No internet connection') {
         setInitError(null);
-        // Retry initialization if network is back
         if (!initialCheckDone) {
           initializeApp();
         }
@@ -162,7 +164,6 @@ export default function RootLayout() {
     };
   }, [appState]);
 
-  // Show loading or error state
   if (isLoading) {
     return (
       <SafeAreaProvider>
