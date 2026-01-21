@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../../constants/Colors';
@@ -7,17 +7,26 @@ import { layouts } from '../../../constants/layouts';
 import LoadingIndicator from '../../../components/LoadingIndicator';
 import RunsheetCard from '../../../components/runsheets/RunsheetCard';
 import DateFilter from '../../../components/runsheets/DateFilter';
+import AcknowledgementViewerModal from '../../../components/runsheets/AcknowledgementViewerModal';
 import { fetchAssignedRunsheets } from '../../../lib/runsheetService';
 import { AssignedRunsheet } from '../../../utils/runsheetTypes';
 import { getCurrentDate } from '../../../utils/dateUtils';
+import { checkAcknowledgementExists, downloadAcknowledgementPDF } from '../../../lib/runsheetAcknowledgement';
+import { supabase } from '../../../lib/supabase';
+
+interface RunsheetWithAcknowledgement extends AssignedRunsheet {
+    isAcknowledged?: boolean;
+}
 
 export default function RunsheetsScreen() {
     const router = useRouter();
-    const [runsheets, setRunsheets] = useState<AssignedRunsheet[]>([]);
+    const [runsheets, setRunsheets] = useState<RunsheetWithAcknowledgement[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [selectedDate, setSelectedDate] = useState(getCurrentDate());
+    const [showPdfViewer, setShowPdfViewer] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState('');
 
     useEffect(() => {
         loadRunsheets();
@@ -28,7 +37,23 @@ export default function RunsheetsScreen() {
             setLoading(true);
             setError(null);
             const data = await fetchAssignedRunsheets(selectedDate, selectedDate);
-            setRunsheets(data);
+
+            const { data: { user } } = await supabase.auth.getUser();
+
+            if (user) {
+                const runsheetsWithStatus = await Promise.all(
+                    data.map(async (runsheet) => {
+                        const isAcknowledged = await checkAcknowledgementExists(runsheet.runsheet_id, user.id);
+                        return {
+                            ...runsheet,
+                            isAcknowledged
+                        };
+                    })
+                );
+                setRunsheets(runsheetsWithStatus);
+            } else {
+                setRunsheets(data);
+            }
         } catch (err: any) {
             setError(err.message || 'Failed to load runsheets');
         } finally {
@@ -42,12 +67,46 @@ export default function RunsheetsScreen() {
         loadRunsheets();
     };
 
-    const handleRunsheetPress = (runsheet: AssignedRunsheet) => {
-        router.push(`/runsheets/${runsheet.runsheet.id}`);
+    const handleRunsheetPress = (runsheet: RunsheetWithAcknowledgement) => {
+        router.push(`/(dashboard)/runsheets/${runsheet.runsheet.id}`);
     };
 
-    const renderRunsheet = ({ item }: { item: AssignedRunsheet }) => (
-        <RunsheetCard runsheet={item} onPress={() => handleRunsheetPress(item)} />
+    const handleViewAcknowledgement = async (runsheet: RunsheetWithAcknowledgement) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const result = await downloadAcknowledgementPDF(runsheet.runsheet_id, user.id);
+
+        if (result.success && result.url) {
+            setPdfUrl(result.url);
+            setShowPdfViewer(true);
+        } else {
+            Alert.alert('Error', result.error || 'Failed to load PDF');
+        }
+    };
+
+    const renderRunsheet = ({ item }: { item: RunsheetWithAcknowledgement }) => (
+        <View style={styles.cardWrapper}>
+            <View style={styles.badgeContainer}>
+                {item.isAcknowledged ? (
+                    <View style={styles.acknowledgedBadge}>
+                        <Ionicons name="checkmark-circle" size={14} color={colors.background} />
+                        <Text style={styles.badgeText}>Acknowledged</Text>
+                    </View>
+                ) : (
+                    <View style={styles.pendingBadge}>
+                        <Ionicons name="alert-circle" size={14} color={colors.background} />
+                        <Text style={styles.badgeText}>Pending</Text>
+                    </View>
+                )}
+            </View>
+            <RunsheetCard
+                runsheet={item}
+                onPress={() => handleRunsheetPress(item)}
+                isAcknowledged={item.isAcknowledged}
+                onViewAcknowledgement={() => handleViewAcknowledgement(item)}
+            />
+        </View>
     );
 
     const renderEmpty = () => (
@@ -97,6 +156,12 @@ export default function RunsheetsScreen() {
                 }
                 ListEmptyComponent={renderEmpty}
             />
+
+            <AcknowledgementViewerModal
+                visible={showPdfViewer}
+                pdfUrl={pdfUrl}
+                onClose={() => setShowPdfViewer(false)}
+            />
         </View>
     );
 }
@@ -108,7 +173,52 @@ const styles = StyleSheet.create({
     },
     listContent: {
         padding: layouts.spacing.lg,
-        paddingTop: 0,
+        paddingTop: layouts.spacing.md,
+    },
+    cardWrapper: {
+        position: 'relative',
+        marginBottom: layouts.spacing.xl,
+    },
+    badgeContainer: {
+        position: 'absolute',
+        top: -12,
+        left: 0,
+        right: 0,
+        zIndex: 10,
+        alignItems: 'center',
+    },
+    acknowledgedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.success,
+        paddingHorizontal: layouts.spacing.sm,
+        paddingVertical: 4,
+        borderRadius: layouts.borderRadius.full,
+        gap: 4,
+        shadowColor: colors.shadow,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
+        elevation: 5,
+    },
+    pendingBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.warning,
+        paddingHorizontal: layouts.spacing.sm,
+        paddingVertical: 4,
+        borderRadius: layouts.borderRadius.full,
+        gap: 4,
+        shadowColor: colors.shadow,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
+        elevation: 5,
+    },
+    badgeText: {
+        color: colors.background,
+        fontSize: 10,
+        fontWeight: '700',
     },
     errorContainer: {
         flexDirection: 'row',

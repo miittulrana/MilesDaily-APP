@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
@@ -8,11 +8,15 @@ import { RunsheetBooking } from '../../utils/runsheetTypes';
 interface BookingCardProps {
     booking: RunsheetBooking;
     sequenceNumber?: number;
+    onPress?: () => void;
 }
 
-export default function BookingCard({ booking, sequenceNumber }: BookingCardProps) {
+export default function BookingCard({ booking, sequenceNumber, onPress }: BookingCardProps) {
+    const CardWrapper = onPress ? TouchableOpacity : View;
+    const wrapperProps = onPress ? { onPress, activeOpacity: 0.7 } : {};
+
     return (
-        <View style={styles.container}>
+        <CardWrapper style={styles.container} {...wrapperProps}>
             {sequenceNumber !== undefined && (
                 <View style={styles.sequenceBadge}>
                     <Text style={styles.sequenceText}>{sequenceNumber}</Text>
@@ -94,7 +98,14 @@ export default function BookingCard({ booking, sequenceNumber }: BookingCardProp
                     </>
                 )}
             </View>
-        </View>
+
+            {onPress && (
+                <View style={styles.tapIndicator}>
+                    <Ionicons name="scan-outline" size={20} color={colors.primary} />
+                    <Text style={styles.tapText}>Tap to scan</Text>
+                </View>
+            )}
+        </CardWrapper>
     );
 }
 
@@ -213,5 +224,20 @@ const styles = StyleSheet.create({
         width: 1,
         height: 40,
         backgroundColor: colors.gray300,
+    },
+    tapIndicator: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: layouts.spacing.xs,
+        marginTop: layouts.spacing.sm,
+        paddingTop: layouts.spacing.sm,
+        borderTopWidth: 1,
+        borderTopColor: colors.gray200,
+    },
+    tapText: {
+        fontSize: 12,
+        color: colors.primary,
+        fontWeight: '600',
     },
 });

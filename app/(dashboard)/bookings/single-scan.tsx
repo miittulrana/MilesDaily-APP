@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useState, useEffect } from 'react';
 import {
   StyleSheet,
@@ -19,6 +19,7 @@ import LoadingIndicator from '../../../components/LoadingIndicator';
 
 export default function SingleScanScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [scanning, setScanning] = useState(true);
   const [loading, setLoading] = useState(false);
   const [booking, setBooking] = useState<Booking | null>(null);
@@ -30,11 +31,23 @@ export default function SingleScanScreen() {
     loadStatuses();
   }, []);
 
+  useEffect(() => {
+    if (params.bookingRef) {
+      handleAutoSearch(params.bookingRef as string);
+    }
+  }, [params.bookingRef]);
+
   const loadStatuses = async () => {
     const result = await getStatuses();
     if (result.success && result.statuses) {
       setStatuses(result.statuses);
     }
+  };
+
+  const handleAutoSearch = async (ref: string) => {
+    setScanning(false);
+    setLoading(true);
+    await handleSearch(ref);
   };
 
   const handleSearch = async (barcode: string) => {
@@ -79,6 +92,7 @@ export default function SingleScanScreen() {
           booking_id: booking!.booking_id,
           status_id: status.status_id,
           mode: 'single',
+          miles_ref: booking!.miles_ref,
         },
       });
     } else {
@@ -113,6 +127,10 @@ export default function SingleScanScreen() {
             setScanning(true);
           },
         },
+        {
+          text: 'Done',
+          onPress: () => router.back(),
+        },
       ]);
     } else {
       Alert.alert('Error', result.error || 'Update failed');
@@ -133,7 +151,7 @@ export default function SingleScanScreen() {
   return (
     <View style={styles.container}>
       {scanning && !showStatusSelector && (
-        <BarcodeScanner 
+        <BarcodeScanner
           onScan={handleBarcodeScan}
           onManualSearch={handleManualSearch}
         />
@@ -141,7 +159,7 @@ export default function SingleScanScreen() {
 
       {booking && showStatusSelector && (
         <ScrollView style={styles.content}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.backButton}
             onPress={handleCancel}
           >

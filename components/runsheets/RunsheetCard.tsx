@@ -9,9 +9,11 @@ import { formatDate } from '../../utils/dateUtils';
 interface RunsheetCardProps {
     runsheet: AssignedRunsheet;
     onPress: () => void;
+    isAcknowledged?: boolean;
+    onViewAcknowledgement?: () => void;
 }
 
-export default function RunsheetCard({ runsheet, onPress }: RunsheetCardProps) {
+export default function RunsheetCard({ runsheet, onPress, isAcknowledged, onViewAcknowledgement }: RunsheetCardProps) {
     const getReportTypeLabel = (type: string, subtype?: string | null) => {
         switch (type) {
             case 'delivery':
@@ -52,6 +54,13 @@ export default function RunsheetCard({ runsheet, onPress }: RunsheetCardProps) {
         0
     );
 
+    const handleViewAcknowledgement = (e: any) => {
+        e.stopPropagation();
+        if (onViewAcknowledgement) {
+            onViewAcknowledgement();
+        }
+    };
+
     return (
         <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.7}>
             <View style={styles.header}>
@@ -73,21 +82,26 @@ export default function RunsheetCard({ runsheet, onPress }: RunsheetCardProps) {
                         </Text>
                     </View>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={colors.gray400} />
+                <View style={styles.headerRight}>
+                    {isAcknowledged && onViewAcknowledgement && (
+                        <TouchableOpacity style={styles.viewButton} onPress={handleViewAcknowledgement}>
+                            <Ionicons name="document-text" size={20} color={colors.primary} />
+                        </TouchableOpacity>
+                    )}
+                    <Ionicons name="chevron-forward" size={20} color={colors.gray400} />
+                </View>
             </View>
 
-            <View style={styles.infoRow}>
-                <View style={styles.infoItem}>
-                    <Ionicons name="calendar-outline" size={16} color={colors.textLight} />
-                    <Text style={styles.infoText}>
-                        {formatDate(runsheet.runsheet.date_from)} - {formatDate(runsheet.runsheet.date_to)}
-                    </Text>
-                </View>
+            <View style={styles.dateRow}>
+                <Ionicons name="calendar-outline" size={14} color={colors.textLight} />
+                <Text style={styles.dateText}>
+                    {formatDate(runsheet.runsheet.date_from)} - {formatDate(runsheet.runsheet.date_to)}
+                </Text>
             </View>
 
             <View style={styles.statsContainer}>
                 <View style={styles.statBox}>
-                    <Ionicons name="cube-outline" size={20} color={colors.primary} />
+                    <Ionicons name="cube-outline" size={18} color={colors.primary} />
                     <View style={styles.statContent}>
                         <Text style={styles.statValue}>{runsheet.runsheet.csv_data.length}</Text>
                         <Text style={styles.statLabel}>Bookings</Text>
@@ -97,7 +111,7 @@ export default function RunsheetCard({ runsheet, onPress }: RunsheetCardProps) {
                 <View style={styles.statDivider} />
 
                 <View style={styles.statBox}>
-                    <Ionicons name="layers-outline" size={20} color={colors.primary} />
+                    <Ionicons name="layers-outline" size={18} color={colors.primary} />
                     <View style={styles.statContent}>
                         <Text style={styles.statValue}>{totalPieces}</Text>
                         <Text style={styles.statLabel}>Pieces</Text>
@@ -107,7 +121,7 @@ export default function RunsheetCard({ runsheet, onPress }: RunsheetCardProps) {
                 <View style={styles.statDivider} />
 
                 <View style={styles.statBox}>
-                    <Ionicons name="barbell-outline" size={20} color={colors.primary} />
+                    <Ionicons name="barbell-outline" size={18} color={colors.primary} />
                     <View style={styles.statContent}>
                         <Text style={styles.statValue}>{totalWeight.toFixed(1)}</Text>
                         <Text style={styles.statLabel}>Kg</Text>
@@ -142,11 +156,12 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'flex-start',
         justifyContent: 'space-between',
-        marginBottom: layouts.spacing.md,
+        marginBottom: layouts.spacing.sm,
     },
     titleContainer: {
         flex: 1,
         gap: layouts.spacing.sm,
+        marginRight: layouts.spacing.md,
     },
     driverName: {
         fontSize: 18,
@@ -163,48 +178,59 @@ const styles = StyleSheet.create({
         fontSize: 11,
         fontWeight: '600',
     },
-    infoRow: {
-        marginBottom: layouts.spacing.md,
-    },
-    infoItem: {
+    headerRight: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: layouts.spacing.sm,
     },
-    infoText: {
-        fontSize: 13,
+    viewButton: {
+        width: 36,
+        height: 36,
+        borderRadius: layouts.borderRadius.full,
+        backgroundColor: colors.primaryLight,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    dateRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: layouts.spacing.xs,
+        marginBottom: layouts.spacing.md,
+    },
+    dateText: {
+        fontSize: 12,
         color: colors.textLight,
     },
     statsContainer: {
         flexDirection: 'row',
         backgroundColor: colors.gray100,
         borderRadius: layouts.borderRadius.md,
-        padding: layouts.spacing.md,
-        marginBottom: layouts.spacing.md,
+        padding: layouts.spacing.sm,
+        marginBottom: layouts.spacing.sm,
     },
     statBox: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: layouts.spacing.sm,
+        gap: layouts.spacing.xs,
     },
     statContent: {
         flex: 1,
     },
     statValue: {
-        fontSize: 16,
+        fontSize: 15,
         fontWeight: '700',
         color: colors.text,
     },
     statLabel: {
-        fontSize: 11,
+        fontSize: 10,
         color: colors.textLight,
     },
     statDivider: {
         width: 1,
-        height: 40,
+        height: 35,
         backgroundColor: colors.gray300,
-        marginHorizontal: layouts.spacing.sm,
+        marginHorizontal: layouts.spacing.xs,
     },
     footer: {
         borderTopWidth: 1,
@@ -212,7 +238,7 @@ const styles = StyleSheet.create({
         paddingTop: layouts.spacing.sm,
     },
     assignedText: {
-        fontSize: 12,
+        fontSize: 11,
         color: colors.textLight,
         fontStyle: 'italic',
     },

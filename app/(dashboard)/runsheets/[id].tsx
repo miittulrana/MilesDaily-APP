@@ -7,9 +7,13 @@ import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import LoadingIndicator from '../../../components/LoadingIndicator';
 import BookingCard from '../../../components/runsheets/BookingCard';
+import AcknowledgementModal from '../../../components/runsheets/AcknowledgementModal';
 import { fetchRunsheetDetail } from '../../../lib/runsheetService';
 import { optimizeDeliveryRoute } from '../../../lib/routeOptimization';
 import { AssignedRunsheet, RunsheetBooking } from '../../../utils/runsheetTypes';
+import { isBizhandleLoggedIn } from '../../../lib/bizhandleAuth';
+import { checkAcknowledgementExists, saveAcknowledgement } from '../../../lib/runsheetAcknowledgement';
+import { supabase } from '../../../lib/supabase';
 
 export default function RunsheetDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -23,6 +27,9 @@ export default function RunsheetDetailScreen() {
     const [sortBy, setSortBy] = useState<'city' | 'company' | 'miles_ref'>('city');
     const [isOptimized, setIsOptimized] = useState(false);
     const [isOptimizing, setIsOptimizing] = useState(false);
+    const [showAcknowledgementModal, setShowAcknowledgementModal] = useState(false);
+    const [isAcknowledged, setIsAcknowledged] = useState(false);
+    const [checkingAcknowledgement, setCheckingAcknowledgement] = useState(true);
 
     useEffect(() => {
         loadRunsheetDetail();
@@ -41,10 +48,20 @@ export default function RunsheetDetailScreen() {
             const data = await fetchRunsheetDetail(id);
             setRunsheet(data);
             setOriginalBookings([...data.runsheet.csv_data]);
+
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const acknowledged = await checkAcknowledgementExists(id, user.id);
+                setIsAcknowledged(acknowledged);
+                if (!acknowledged) {
+                    setShowAcknowledgementModal(true);
+                }
+            }
         } catch (err: any) {
             setError(err.message || 'Failed to load runsheet details');
         } finally {
             setLoading(false);
+            setCheckingAcknowledgement(false);
         }
     };
 
@@ -141,14 +158,86 @@ export default function RunsheetDetailScreen() {
         }
     };
 
+    const handleBookingPress = async (booking: RunsheetBooking) => {
+        const isLoggedIn = await isBizhandleLoggedIn();
+
+        if (!isLoggedIn) {
+            Alert.alert(
+                'Bizhandle Login Required',
+                'You need to login to Bizhandle to scan bookings.',
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                        text: 'Login',
+                        onPress: () => {
+                            router.push({
+                                pathname: '/(dashboard)/bookings/login',
+                            });
+                        },
+                    },
+                ]
+            );
+            return;
+        }
+
+        const bookingRef = (booking.customer_id === 109 || booking.customer_id === 990)
+            ? booking.hawb
+            : booking.miles_ref;
+
+        router.push({
+            pathname: '/(dashboard)/bookings/single-scan',
+            params: { bookingRef },
+        });
+    };
+
+    const handleAcknowledge = async (signature: string) => {
+        if (!runsheet) return;
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            Alert.alert('Error', 'User not authenticated');
+            return;
+        }
+
+        const totalPieces = runsheet.runsheet.csv_data.reduce(
+            (sum, b) => sum + parseInt(b.total_pieces || '0'),
+            0
+        );
+
+        const driverName = `${user.user_metadata?.first_name || ''} ${user.user_metadata?.last_name || ''}`.trim() || user.email;
+
+        const result = await saveAcknowledgement({
+            runsheetId: id,
+            driverId: user.id,
+            driverName: driverName || user.email || 'Unknown Driver',
+            signatureBase64: signature,
+            runsheetDetails: {
+                staffName: runsheet.runsheet.staff_name,
+                dateFrom: runsheet.runsheet.date_from,
+                dateTo: runsheet.runsheet.date_to,
+                totalBookings: runsheet.runsheet.csv_data.length,
+                totalPieces: totalPieces,
+            }
+        });
+
+        if (result.success) {
+            setIsAcknowledged(true);
+            setShowAcknowledgementModal(false);
+            Alert.alert('Success', 'Run-sheet acknowledged successfully!');
+        } else {
+            Alert.alert('Error', result.error || 'Failed to save acknowledgement');
+        }
+    };
+
     const renderBooking = ({ item, index }: { item: RunsheetBooking; index: number }) => (
         <BookingCard
             booking={item}
             sequenceNumber={isOptimized ? index + 1 : undefined}
+            onPress={() => handleBookingPress(item)}
         />
     );
 
-    if (loading) {
+    if (loading || checkingAcknowledgement) {
         return <LoadingIndicator fullScreen message="Loading runsheet details..." />;
     }
 
@@ -167,43 +256,14 @@ export default function RunsheetDetailScreen() {
 
     return (
         <View style={styles.container}>
-            <View style={styles.header}>
-                <View style={styles.headerInfo}>
-                    <Text style={styles.driverName}>{runsheet.runsheet.staff_name}</Text>
-                    <Text style={styles.dateRange}>
-                        {runsheet.runsheet.date_from} to {runsheet.runsheet.date_to}
-                    </Text>
-                    <View style={styles.statsRow}>
-                        <View style={styles.statItem}>
-                            <Text style={styles.statValue}>{filteredBookings.length}</Text>
-                            <Text style={styles.statLabel}>Bookings</Text>
-                        </View>
-                        <View style={styles.statDivider} />
-                        <View style={styles.statItem}>
-                            <Text style={styles.statValue}>
-                                {filteredBookings.reduce((sum, b) => sum + parseInt(b.total_pieces || '0'), 0)}
-                            </Text>
-                            <Text style={styles.statLabel}>Pieces</Text>
-                        </View>
-                    </View>
-                </View>
-            </View>
-
-            <View style={styles.optimizeContainer}>
+            <View style={styles.compactHeader}>
                 <View style={styles.optimizeRow}>
-                    <View style={styles.optimizeInfo}>
-                        <Ionicons
-                            name="navigate-circle"
-                            size={24}
-                            color={isOptimized ? colors.success : colors.gray400}
-                        />
-                        <View>
-                            <Text style={styles.optimizeLabel}>Route Optimization</Text>
-                            <Text style={styles.optimizeSubtext}>
-                                {isOptimized ? 'Optimized route active' : 'Use GPS to optimize delivery order'}
-                            </Text>
-                        </View>
-                    </View>
+                    <Ionicons
+                        name="navigate-circle"
+                        size={20}
+                        color={isOptimized ? colors.success : colors.gray400}
+                    />
+                    <Text style={styles.optimizeLabel}>Route Optimize</Text>
                     <View style={styles.switchContainer}>
                         {isOptimizing ? (
                             <ActivityIndicator size="small" color={colors.primary} />
@@ -222,10 +282,10 @@ export default function RunsheetDetailScreen() {
 
             <View style={styles.controls}>
                 <View style={styles.searchContainer}>
-                    <Ionicons name="search" size={20} color={colors.gray400} />
+                    <Ionicons name="search" size={18} color={colors.gray400} />
                     <TextInput
                         style={styles.searchInput}
-                        placeholder="Search by ref, company, city..."
+                        placeholder="Search..."
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                         placeholderTextColor={colors.gray400}
@@ -233,14 +293,13 @@ export default function RunsheetDetailScreen() {
                     />
                     {searchQuery.length > 0 && (
                         <TouchableOpacity onPress={() => setSearchQuery('')}>
-                            <Ionicons name="close-circle" size={20} color={colors.gray400} />
+                            <Ionicons name="close-circle" size={18} color={colors.gray400} />
                         </TouchableOpacity>
                     )}
                 </View>
 
                 {!isOptimized && (
                     <View style={styles.sortContainer}>
-                        <Text style={styles.sortLabel}>Sort by:</Text>
                         <TouchableOpacity
                             style={[styles.sortButton, sortBy === 'city' && styles.sortButtonActive]}
                             onPress={() => setSortBy('city')}
@@ -276,6 +335,20 @@ export default function RunsheetDetailScreen() {
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
             />
+
+            {runsheet && (
+                <AcknowledgementModal
+                    visible={showAcknowledgementModal}
+                    runsheetId={id}
+                    staffName={runsheet.runsheet.staff_name}
+                    dateFrom={runsheet.runsheet.date_from}
+                    dateTo={runsheet.runsheet.date_to}
+                    totalBookings={runsheet.runsheet.csv_data.length}
+                    totalPieces={runsheet.runsheet.csv_data.reduce((sum, b) => sum + parseInt(b.total_pieces || '0'), 0)}
+                    onAcknowledge={handleAcknowledge}
+                    onCancel={() => router.back()}
+                />
+            )}
         </View>
     );
 }
@@ -285,81 +358,29 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: colors.background,
     },
-    header: {
+    compactHeader: {
         backgroundColor: colors.card,
-        padding: layouts.spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.gray200,
-    },
-    headerInfo: {
-        gap: layouts.spacing.sm,
-    },
-    driverName: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: colors.text,
-    },
-    dateRange: {
-        fontSize: 14,
-        color: colors.textLight,
-    },
-    statsRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: layouts.spacing.md,
-    },
-    statItem: {
-        alignItems: 'center',
-        flex: 1,
-    },
-    statValue: {
-        fontSize: 24,
-        fontWeight: '700',
-        color: colors.primary,
-    },
-    statLabel: {
-        fontSize: 12,
-        color: colors.textLight,
-        marginTop: layouts.spacing.xs,
-    },
-    statDivider: {
-        width: 1,
-        height: 40,
-        backgroundColor: colors.gray200,
-    },
-    optimizeContainer: {
-        backgroundColor: colors.card,
-        padding: layouts.spacing.lg,
+        padding: layouts.spacing.md,
         borderBottomWidth: 1,
         borderBottomColor: colors.gray200,
     },
     optimizeRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    optimizeInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: layouts.spacing.md,
-        flex: 1,
+        gap: layouts.spacing.sm,
     },
     optimizeLabel: {
-        fontSize: 15,
+        flex: 1,
+        fontSize: 14,
         fontWeight: '600',
         color: colors.text,
     },
-    optimizeSubtext: {
-        fontSize: 12,
-        color: colors.textLight,
-        marginTop: 2,
-    },
     switchContainer: {
-        marginLeft: layouts.spacing.md,
+        marginLeft: layouts.spacing.sm,
     },
     controls: {
-        padding: layouts.spacing.lg,
-        gap: layouts.spacing.md,
+        padding: layouts.spacing.md,
+        gap: layouts.spacing.sm,
         backgroundColor: colors.card,
         borderBottomWidth: 1,
         borderBottomColor: colors.gray200,
@@ -368,33 +389,29 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: colors.background,
-        borderRadius: layouts.borderRadius.lg,
-        paddingHorizontal: layouts.spacing.md,
+        borderRadius: layouts.borderRadius.md,
+        paddingHorizontal: layouts.spacing.sm,
         borderWidth: 1,
         borderColor: colors.gray200,
-        gap: layouts.spacing.sm,
+        gap: layouts.spacing.xs,
+        height: 40,
     },
     searchInput: {
         flex: 1,
-        height: 44,
         fontSize: 14,
         color: colors.text,
     },
     sortContainer: {
         flexDirection: 'row',
-        alignItems: 'center',
-        gap: layouts.spacing.sm,
-    },
-    sortLabel: {
-        fontSize: 14,
-        color: colors.textLight,
-        fontWeight: '500',
+        gap: layouts.spacing.xs,
     },
     sortButton: {
+        flex: 1,
         paddingVertical: layouts.spacing.xs,
-        paddingHorizontal: layouts.spacing.md,
+        paddingHorizontal: layouts.spacing.sm,
         borderRadius: layouts.borderRadius.md,
         backgroundColor: colors.gray100,
+        alignItems: 'center',
     },
     sortButtonActive: {
         backgroundColor: colors.primary,
@@ -408,7 +425,7 @@ const styles = StyleSheet.create({
         color: colors.background,
     },
     listContent: {
-        padding: layouts.spacing.lg,
+        padding: layouts.spacing.md,
     },
     errorState: {
         flex: 1,

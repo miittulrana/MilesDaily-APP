@@ -1,6 +1,7 @@
 export interface RunsheetBooking {
     miles_ref: string;
     hawb: string;
+    customer_id?: number;
     consignee_company: string;
     consignee_name: string;
     consignee_address: string;
