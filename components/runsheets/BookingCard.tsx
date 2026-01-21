@@ -7,11 +7,18 @@ import { RunsheetBooking } from '../../utils/runsheetTypes';
 
 interface BookingCardProps {
     booking: RunsheetBooking;
+    sequenceNumber?: number;
 }
 
-export default function BookingCard({ booking }: BookingCardProps) {
+export default function BookingCard({ booking, sequenceNumber }: BookingCardProps) {
     return (
         <View style={styles.container}>
+            {sequenceNumber !== undefined && (
+                <View style={styles.sequenceBadge}>
+                    <Text style={styles.sequenceText}>{sequenceNumber}</Text>
+                </View>
+            )}
+
             <View style={styles.header}>
                 <View style={styles.refContainer}>
                     <Ionicons name="document-text" size={16} color={colors.primary} />
@@ -104,6 +111,29 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.05,
         shadowRadius: 2,
         elevation: 1,
+        position: 'relative',
+    },
+    sequenceBadge: {
+        position: 'absolute',
+        top: -8,
+        left: -8,
+        backgroundColor: colors.primary,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 10,
+        shadowColor: colors.shadow,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
+        elevation: 5,
+    },
+    sequenceText: {
+        color: colors.background,
+        fontSize: 14,
+        fontWeight: '700',
     },
     header: {
         marginBottom: layouts.spacing.md,

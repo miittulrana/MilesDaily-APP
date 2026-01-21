@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, Switch } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import LoadingIndicator from '../../../components/LoadingIndicator';
 import BookingCard from '../../../components/runsheets/BookingCard';
 import { fetchRunsheetDetail } from '../../../lib/runsheetService';
+import { optimizeDeliveryRoute } from '../../../lib/routeOptimization';
 import { AssignedRunsheet, RunsheetBooking } from '../../../utils/runsheetTypes';
 
 export default function RunsheetDetailScreen() {
@@ -14,20 +16,23 @@ export default function RunsheetDetailScreen() {
     const router = useRouter();
     const [runsheet, setRunsheet] = useState<AssignedRunsheet | null>(null);
     const [filteredBookings, setFilteredBookings] = useState<RunsheetBooking[]>([]);
+    const [originalBookings, setOriginalBookings] = useState<RunsheetBooking[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState<'city' | 'company' | 'miles_ref'>('city');
+    const [isOptimized, setIsOptimized] = useState(false);
+    const [isOptimizing, setIsOptimizing] = useState(false);
 
     useEffect(() => {
         loadRunsheetDetail();
     }, [id]);
 
     useEffect(() => {
-        if (runsheet) {
+        if (runsheet && !isOptimized) {
             filterAndSortBookings();
         }
-    }, [runsheet, searchQuery, sortBy]);
+    }, [runsheet, searchQuery, sortBy, isOptimized]);
 
     const loadRunsheetDetail = async () => {
         try {
@@ -35,6 +40,7 @@ export default function RunsheetDetailScreen() {
             setError(null);
             const data = await fetchRunsheetDetail(id);
             setRunsheet(data);
+            setOriginalBookings([...data.runsheet.csv_data]);
         } catch (err: any) {
             setError(err.message || 'Failed to load runsheet details');
         } finally {
@@ -45,7 +51,7 @@ export default function RunsheetDetailScreen() {
     const filterAndSortBookings = () => {
         if (!runsheet) return;
 
-        let bookings = [...runsheet.runsheet.csv_data];
+        let bookings = [...originalBookings];
 
         if (searchQuery) {
             const query = searchQuery.toLowerCase();
@@ -72,8 +78,74 @@ export default function RunsheetDetailScreen() {
         setFilteredBookings(bookings);
     };
 
-    const renderBooking = ({ item }: { item: RunsheetBooking }) => (
-        <BookingCard booking={item} />
+    const handleOptimizeToggle = async (value: boolean) => {
+        if (value) {
+            await optimizeRoute();
+        } else {
+            setIsOptimized(false);
+            filterAndSortBookings();
+        }
+    };
+
+    const optimizeRoute = async () => {
+        try {
+            setIsOptimizing(true);
+
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert(
+                    'Permission Required',
+                    'Location permission is needed to optimize your route.'
+                );
+                return;
+            }
+
+            const location = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.Balanced,
+            });
+
+            const startLocation = {
+                lat: location.coords.latitude,
+                lng: location.coords.longitude,
+            };
+
+            let bookingsToOptimize = [...originalBookings];
+            if (searchQuery) {
+                const query = searchQuery.toLowerCase();
+                bookingsToOptimize = bookingsToOptimize.filter(
+                    (b) =>
+                        b.miles_ref.toLowerCase().includes(query) ||
+                        b.hawb.toLowerCase().includes(query) ||
+                        b.consignee_company.toLowerCase().includes(query) ||
+                        b.consignee_name.toLowerCase().includes(query) ||
+                        b.consignee_city.toLowerCase().includes(query)
+                );
+            }
+
+            const optimizedResult = await optimizeDeliveryRoute(
+                bookingsToOptimize,
+                startLocation
+            );
+
+            setFilteredBookings(optimizedResult.optimizedBookings);
+            setIsOptimized(true);
+        } catch (err: any) {
+            console.error('Optimization error:', err);
+            Alert.alert(
+                'Optimization Failed',
+                err.message || 'Failed to optimize route. Please try again.'
+            );
+            setIsOptimized(false);
+        } finally {
+            setIsOptimizing(false);
+        }
+    };
+
+    const renderBooking = ({ item, index }: { item: RunsheetBooking; index: number }) => (
+        <BookingCard
+            booking={item}
+            sequenceNumber={isOptimized ? index + 1 : undefined}
+        />
     );
 
     if (loading) {
@@ -117,6 +189,37 @@ export default function RunsheetDetailScreen() {
                 </View>
             </View>
 
+            <View style={styles.optimizeContainer}>
+                <View style={styles.optimizeRow}>
+                    <View style={styles.optimizeInfo}>
+                        <Ionicons
+                            name="navigate-circle"
+                            size={24}
+                            color={isOptimized ? colors.success : colors.gray400}
+                        />
+                        <View>
+                            <Text style={styles.optimizeLabel}>Route Optimization</Text>
+                            <Text style={styles.optimizeSubtext}>
+                                {isOptimized ? 'Optimized route active' : 'Use GPS to optimize delivery order'}
+                            </Text>
+                        </View>
+                    </View>
+                    <View style={styles.switchContainer}>
+                        {isOptimizing ? (
+                            <ActivityIndicator size="small" color={colors.primary} />
+                        ) : (
+                            <Switch
+                                value={isOptimized}
+                                onValueChange={handleOptimizeToggle}
+                                trackColor={{ false: colors.gray300, true: colors.success + '80' }}
+                                thumbColor={isOptimized ? colors.success : colors.gray400}
+                                ios_backgroundColor={colors.gray300}
+                            />
+                        )}
+                    </View>
+                </View>
+            </View>
+
             <View style={styles.controls}>
                 <View style={styles.searchContainer}>
                     <Ionicons name="search" size={20} color={colors.gray400} />
@@ -126,6 +229,7 @@ export default function RunsheetDetailScreen() {
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                         placeholderTextColor={colors.gray400}
+                        editable={!isOptimized}
                     />
                     {searchQuery.length > 0 && (
                         <TouchableOpacity onPress={() => setSearchQuery('')}>
@@ -134,33 +238,35 @@ export default function RunsheetDetailScreen() {
                     )}
                 </View>
 
-                <View style={styles.sortContainer}>
-                    <Text style={styles.sortLabel}>Sort by:</Text>
-                    <TouchableOpacity
-                        style={[styles.sortButton, sortBy === 'city' && styles.sortButtonActive]}
-                        onPress={() => setSortBy('city')}
-                    >
-                        <Text style={[styles.sortButtonText, sortBy === 'city' && styles.sortButtonTextActive]}>
-                            City
-                        </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.sortButton, sortBy === 'company' && styles.sortButtonActive]}
-                        onPress={() => setSortBy('company')}
-                    >
-                        <Text style={[styles.sortButtonText, sortBy === 'company' && styles.sortButtonTextActive]}>
-                            Company
-                        </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.sortButton, sortBy === 'miles_ref' && styles.sortButtonActive]}
-                        onPress={() => setSortBy('miles_ref')}
-                    >
-                        <Text style={[styles.sortButtonText, sortBy === 'miles_ref' && styles.sortButtonTextActive]}>
-                            Ref
-                        </Text>
-                    </TouchableOpacity>
-                </View>
+                {!isOptimized && (
+                    <View style={styles.sortContainer}>
+                        <Text style={styles.sortLabel}>Sort by:</Text>
+                        <TouchableOpacity
+                            style={[styles.sortButton, sortBy === 'city' && styles.sortButtonActive]}
+                            onPress={() => setSortBy('city')}
+                        >
+                            <Text style={[styles.sortButtonText, sortBy === 'city' && styles.sortButtonTextActive]}>
+                                City
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.sortButton, sortBy === 'company' && styles.sortButtonActive]}
+                            onPress={() => setSortBy('company')}
+                        >
+                            <Text style={[styles.sortButtonText, sortBy === 'company' && styles.sortButtonTextActive]}>
+                                Company
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.sortButton, sortBy === 'miles_ref' && styles.sortButtonActive]}
+                            onPress={() => setSortBy('miles_ref')}
+                        >
+                            <Text style={[styles.sortButtonText, sortBy === 'miles_ref' && styles.sortButtonTextActive]}>
+                                Ref
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
             </View>
 
             <FlatList
@@ -220,6 +326,36 @@ const styles = StyleSheet.create({
         width: 1,
         height: 40,
         backgroundColor: colors.gray200,
+    },
+    optimizeContainer: {
+        backgroundColor: colors.card,
+        padding: layouts.spacing.lg,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.gray200,
+    },
+    optimizeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    optimizeInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: layouts.spacing.md,
+        flex: 1,
+    },
+    optimizeLabel: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: colors.text,
+    },
+    optimizeSubtext: {
+        fontSize: 12,
+        color: colors.textLight,
+        marginTop: 2,
+    },
+    switchContainer: {
+        marginLeft: layouts.spacing.md,
     },
     controls: {
         padding: layouts.spacing.lg,

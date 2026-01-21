@@ -20,7 +20,9 @@
       "bundleIdentifier": "com.milesxp.daily",
       "infoPlist": {
         "NSCameraUsageDescription": "This app needs camera access to take photos of washed vehicles.",
-        "NSPhotoLibraryUsageDescription": "This app needs photo library access to select vehicle wash photos."
+        "NSPhotoLibraryUsageDescription": "This app needs photo library access to select vehicle wash photos.",
+        "NSLocationWhenInUseUsageDescription": "This app needs location access to optimize your delivery routes.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs location access to optimize your delivery routes."
       }
     },
     "android": {
@@ -39,7 +41,9 @@
         "DISABLE_KEYGUARD",
         "USE_FULL_SCREEN_INTENT",
         "SCHEDULE_EXACT_ALARM",
-        "WAKE_LOCK"
+        "WAKE_LOCK",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
       ]
     },
     "web": {
@@ -57,7 +61,13 @@
       ],
       "expo-font",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Miles-XP Daily to use your location to optimize delivery routes."
+        }
+      ]
     ],
     "scheme": "fleet-management",
     "extra": {
