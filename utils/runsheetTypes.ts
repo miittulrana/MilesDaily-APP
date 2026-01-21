@@ -13,6 +13,7 @@ export interface RunsheetBooking {
     total_pieces: string;
     total_weight: string;
     status_name?: string;
+    booking_id?: number;
 }
 
 export interface Runsheet {
@@ -38,4 +39,18 @@ export interface AssignedRunsheet {
     created_at: string;
     updated_at: string;
     runsheet: Runsheet;
+}
+
+export interface BookingStatus {
+    booking_id: number;
+    status_id: number;
+    status_name: string;
+    staff_id: string;
+    staff_name: string;
+    delivered_date: string;
+    delivered_time: string;
+}
+
+export interface BookingStatusMap {
+    [booking_id: string]: BookingStatus;
 }

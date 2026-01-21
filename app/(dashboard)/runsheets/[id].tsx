@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, Switch } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, Switch, RefreshControl } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -8,9 +8,9 @@ import { layouts } from '../../../constants/layouts';
 import LoadingIndicator from '../../../components/LoadingIndicator';
 import BookingCard from '../../../components/runsheets/BookingCard';
 import AcknowledgementModal from '../../../components/runsheets/AcknowledgementModal';
-import { fetchRunsheetDetail } from '../../../lib/runsheetService';
+import { fetchRunsheetDetail, fetchBookingStatuses } from '../../../lib/runsheetService';
 import { optimizeDeliveryRoute } from '../../../lib/routeOptimization';
-import { AssignedRunsheet, RunsheetBooking } from '../../../utils/runsheetTypes';
+import { AssignedRunsheet, RunsheetBooking, BookingStatusMap } from '../../../utils/runsheetTypes';
 import { isBizhandleLoggedIn } from '../../../lib/bizhandleAuth';
 import { checkAcknowledgementExists, saveAcknowledgement } from '../../../lib/runsheetAcknowledgement';
 import { supabase } from '../../../lib/supabase';
@@ -30,6 +30,9 @@ export default function RunsheetDetailScreen() {
     const [showAcknowledgementModal, setShowAcknowledgementModal] = useState(false);
     const [isAcknowledged, setIsAcknowledged] = useState(false);
     const [checkingAcknowledgement, setCheckingAcknowledgement] = useState(true);
+    const [bookingStatuses, setBookingStatuses] = useState<BookingStatusMap>({});
+    const [loadingStatuses, setLoadingStatuses] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
         loadRunsheetDetail();
@@ -40,6 +43,26 @@ export default function RunsheetDetailScreen() {
             filterAndSortBookings();
         }
     }, [runsheet, searchQuery, sortBy, isOptimized]);
+
+    const loadBookingStatuses = async (runsheetData: AssignedRunsheet) => {
+        try {
+            setLoadingStatuses(true);
+
+            const bookings = runsheetData.runsheet.csv_data;
+
+            if (bookings.length === 0) {
+                return;
+            }
+
+            const originalStaffId = runsheetData.runsheet.staff_id;
+            const statuses = await fetchBookingStatuses(bookings, originalStaffId);
+            setBookingStatuses(statuses);
+        } catch (err) {
+            console.error('Error loading booking statuses:', err);
+        } finally {
+            setLoadingStatuses(false);
+        }
+    };
 
     const loadRunsheetDetail = async () => {
         try {
@@ -57,12 +80,20 @@ export default function RunsheetDetailScreen() {
                     setShowAcknowledgementModal(true);
                 }
             }
+
+            await loadBookingStatuses(data);
         } catch (err: any) {
             setError(err.message || 'Failed to load runsheet details');
         } finally {
             setLoading(false);
             setCheckingAcknowledgement(false);
         }
+    };
+
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        await loadRunsheetDetail();
+        setRefreshing(false);
     };
 
     const filterAndSortBookings = () => {
@@ -229,13 +260,18 @@ export default function RunsheetDetailScreen() {
         }
     };
 
-    const renderBooking = ({ item, index }: { item: RunsheetBooking; index: number }) => (
-        <BookingCard
-            booking={item}
-            sequenceNumber={isOptimized ? index + 1 : undefined}
-            onPress={() => handleBookingPress(item)}
-        />
-    );
+    const renderBooking = ({ item, index }: { item: RunsheetBooking; index: number }) => {
+        const bookingStatus = bookingStatuses[item.miles_ref];
+
+        return (
+            <BookingCard
+                booking={item}
+                sequenceNumber={isOptimized ? index + 1 : undefined}
+                onPress={() => handleBookingPress(item)}
+                currentStatus={bookingStatus}
+            />
+        );
+    };
 
     if (loading || checkingAcknowledgement) {
         return <LoadingIndicator fullScreen message="Loading runsheet details..." />;
@@ -328,12 +364,27 @@ export default function RunsheetDetailScreen() {
                 )}
             </View>
 
+            {loadingStatuses && (
+                <View style={styles.statusLoadingBanner}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.statusLoadingText}>Loading status updates...</Text>
+                </View>
+            )}
+
             <FlatList
                 data={filteredBookings}
                 renderItem={renderBooking}
                 keyExtractor={(item, index) => `${item.miles_ref}-${index}`}
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={handleRefresh}
+                        colors={[colors.primary]}
+                        tintColor={colors.primary}
+                    />
+                }
             />
 
             {runsheet && (
@@ -423,6 +474,19 @@ const styles = StyleSheet.create({
     },
     sortButtonTextActive: {
         color: colors.background,
+    },
+    statusLoadingBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.info + '15',
+        paddingVertical: layouts.spacing.sm,
+        gap: layouts.spacing.sm,
+    },
+    statusLoadingText: {
+        fontSize: 12,
+        color: colors.info,
+        fontWeight: '500',
     },
     listContent: {
         padding: layouts.spacing.md,

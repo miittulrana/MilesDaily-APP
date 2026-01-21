@@ -3,15 +3,16 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
-import { RunsheetBooking } from '../../utils/runsheetTypes';
+import { RunsheetBooking, BookingStatus } from '../../utils/runsheetTypes';
 
 interface BookingCardProps {
     booking: RunsheetBooking;
     sequenceNumber?: number;
     onPress?: () => void;
+    currentStatus?: BookingStatus;
 }
 
-export default function BookingCard({ booking, sequenceNumber, onPress }: BookingCardProps) {
+export default function BookingCard({ booking, sequenceNumber, onPress, currentStatus }: BookingCardProps) {
     const CardWrapper = onPress ? TouchableOpacity : View;
     const wrapperProps = onPress ? { onPress, activeOpacity: 0.7 } : {};
 
@@ -32,6 +33,16 @@ export default function BookingCard({ booking, sequenceNumber, onPress }: Bookin
                     <Text style={styles.hawb}>HAWB: {booking.hawb}</Text>
                 )}
             </View>
+
+            {currentStatus && (
+                <View style={styles.statusBanner}>
+                    <Ionicons name="information-circle" size={16} color={colors.info} />
+                    <Text style={styles.statusText}>
+                        {currentStatus.status_name}
+                        {currentStatus.staff_name && ` - ${currentStatus.staff_name}`}
+                    </Text>
+                </View>
+            )}
 
             <View style={styles.section}>
                 <View style={styles.row}>
@@ -167,6 +178,22 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: colors.textLight,
         fontStyle: 'italic',
+    },
+    statusBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.info + '15',
+        paddingVertical: layouts.spacing.xs,
+        paddingHorizontal: layouts.spacing.sm,
+        borderRadius: layouts.borderRadius.sm,
+        marginBottom: layouts.spacing.sm,
+        gap: layouts.spacing.xs,
+    },
+    statusText: {
+        fontSize: 12,
+        color: colors.info,
+        fontWeight: '600',
+        flex: 1,
     },
     section: {
         marginBottom: layouts.spacing.sm,
