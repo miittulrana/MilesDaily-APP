@@ -16,20 +16,20 @@ export default function DashboardScreen() {
   const [vehicle, setVehicle] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  
+
   const {
     assignments,
     loading: assignmentsLoading,
     refetch: refetchAssignments,
     hasActiveAssignments,
   } = useTempAssignments(driver?.id);
-  
+
   const loadData = async (showLoading = true) => {
     try {
       if (showLoading) setLoading(true);
       const driverData = await getDriverInfo();
       setDriver(driverData);
-      
+
       if (driverData?.id) {
         const vehicleData = await getAssignedVehicle(driverData.id);
         setVehicle(vehicleData);
@@ -54,7 +54,7 @@ export default function DashboardScreen() {
 
   const getDriverName = () => {
     if (!driver) return '';
-    return driver.first_name && driver.last_name 
+    return driver.first_name && driver.last_name
       ? `${driver.first_name} ${driver.last_name}`
       : driver.first_name || driver.email;
   };
@@ -94,6 +94,8 @@ export default function DashboardScreen() {
       router.push('/(dashboard)/breakdown');
     } else if (module === 'uniforms') {
       router.push('/(dashboard)/uniforms');
+    } else if (module === 'runsheets') {
+      router.push('/(dashboard)/runsheets');
     } else if (module === 'important-numbers') {
       router.push('/(dashboard)/important-numbers');
     } else if (module === 'bookings') {
@@ -106,8 +108,8 @@ export default function DashboardScreen() {
   }
 
   return (
-    <ScrollView 
-      style={styles.container} 
+    <ScrollView
+      style={styles.container}
       contentContainerStyle={styles.content}
       refreshControl={
         <RefreshControl
@@ -156,71 +158,75 @@ export default function DashboardScreen() {
             onPress={() => navigateToModule('bookings')}
           />
           <ModuleCard
+            title="Run-Sheets"
+            iconName="list-outline"
+            onPress={() => navigateToModule('runsheets')}
+          />
+        </View>
+
+        <View style={styles.moduleRow}>
+          <ModuleCard
             title="Documents"
             iconName="document-text-outline"
             onPress={() => navigateToModule('documents')}
           />
-        </View>
-        
-        <View style={styles.moduleRow}>
           <ModuleCard
             title="Fuel"
             iconName="water"
             onPress={() => navigateToModule('fuel')}
           />
+        </View>
+
+        <View style={styles.moduleRow}>
           <ModuleCard
             title="Truck Log"
             iconName="time-outline"
             onPress={() => navigateToModule('truck-log')}
           />
-        </View>
-        
-        <View style={styles.moduleRow}>
           <ModuleCard
             title="Wash"
             iconName="car-outline"
             onPress={() => navigateToModule('wash')}
           />
+        </View>
+
+        <View style={styles.moduleRow}>
           <ModuleCard
             title="Minor Repairs"
             iconName="construct-outline"
             onPress={() => navigateToModule('minor-repairs')}
           />
-        </View>
-        
-        <View style={styles.moduleRow}>
           <ModuleCard
             title="Accident"
             iconName="warning-outline"
             onPress={() => navigateToModule('accident')}
           />
+        </View>
+
+        <View style={styles.moduleRow}>
           <ModuleCard
             title="Damage Log"
             iconName="alert-circle-outline"
             onPress={() => navigateToModule('damage-log')}
           />
-        </View>
-        
-        <View style={styles.moduleRow}>
           <ModuleCard
             title="Breakdown"
             iconName="construct-outline"
             onPress={() => navigateToModule('breakdown')}
           />
+        </View>
+
+        <View style={styles.moduleRow}>
           <ModuleCard
             title="Uniforms"
             iconName="shirt-outline"
             onPress={() => navigateToModule('uniforms')}
           />
-        </View>
-        
-        <View style={styles.moduleRow}>
           <ModuleCard
             title="Important Numbers"
             iconName="call-outline"
             onPress={() => navigateToModule('important-numbers')}
           />
-          <View style={styles.moduleCardPlaceholder} />
         </View>
       </View>
     </ScrollView>

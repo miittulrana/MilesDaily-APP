@@ -219,6 +219,20 @@ export default function DashboardLayout() {
         }}
       />
       <Stack.Screen
+        name="runsheets/index"
+        options={{
+          headerShown: true,
+          title: 'Run-Sheets',
+        }}
+      />
+      <Stack.Screen
+        name="runsheets/[id]"
+        options={{
+          headerShown: true,
+          title: 'Run-Sheet Details',
+        }}
+      />
+      <Stack.Screen
         name="important-numbers/index"
         options={{
           headerShown: true,
