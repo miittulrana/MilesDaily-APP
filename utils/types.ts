@@ -1,116 +1,135 @@
-export type FuelRecord = {
-  id: string;
-  vehicle_id: string;
-  driver_id?: string;
-  amount_euros: number;
-  current_km: number;
-  liters?: number;
-  location?: string;
-  notes?: string;
-  created_by: string;
-  is_manual_entry: boolean;
-  created_at: string;
-  updated_at?: string;
-  
-  vehicle?: {
-    license_plate: string;
-    brand: string;
-    model?: string;
-    type?: string;
-  };
-};
+export type DriverRole = 'van-driver' | 'scooter-driver' | 'truck-driver';
 
-export type Vehicle = {
-  id: string;
-  license_plate: string;
-  brand: string;
-  model?: string;
-  year?: number;
-  type?: string;
-  status: string;
-  fuel_type: string;
-  driver_id?: string;
-  notes?: string;
-  created_at: string;
-  updated_at?: string;
-};
+export type DriverType = 'freight' | 'pd' | 'subcontractor';
 
-export type FuelPrice = {
-  id: string;
-  fuel_type: string;
-  price_per_liter: number;
-  updated_at: string;
-  updated_by?: string;
-};
-
-export type FuelFormData = {
-  vehicle_id: string;
-  amount_euros: number;
-  current_km: number;
-};
-
-export type FuelStats = {
-  total_spent_euros: number;
-  total_liters: number;
-  total_distance_km: number;
-  record_count: number;
-  avg_consumption_per_100km: number;
-  last_km_reading: number;
-};
-
-export type DriverInfo = {
+export interface DriverInfo {
   id: string;
   email: string;
-  first_name?: string;
-  last_name?: string;
-  role: 'van-driver' | 'scooter-driver' | 'truck-driver';
-  is_active: boolean;
-  last_login?: string;
-};
+  first_name?: string | null;
+  last_name?: string | null;
+  role?: DriverRole;
+  driver_types?: DriverType[];
+  is_active?: boolean;
+  bizhandle_staff_id?: number | null;
+}
 
-export type WashSchedule = {
+export interface Vehicle {
+  id: string;
+  license_plate: string;
+  fuel_type?: string;
+  make?: string;
+  model?: string;
+}
+
+export interface FuelRecord {
+  id: string;
+  driver_id: string;
+  vehicle_id: string;
+  liters: number;
+  cost: number;
+  odometer?: number;
+  fuel_type: string;
+  station_name?: string;
+  receipt_url?: string;
+  created_at: string;
+}
+
+export interface Document {
+  id: string;
+  driver_id: string;
+  document_type: string;
+  expiry_date?: string;
+  file_url?: string;
+  status: 'valid' | 'expiring' | 'expired';
+}
+
+export interface TruckLogSession {
+  id: string;
+  driver_id: string;
+  vehicle_id: string;
+  start_time: string;
+  end_time?: string;
+  start_odometer?: number;
+  end_odometer?: number;
+  status: 'active' | 'completed';
+}
+
+export interface WashSchedule {
   id: string;
   vehicle_id: string;
-  driver_id: string | null;
   scheduled_date: string;
-  status: 'pending' | 'completed';
-  completed_at: string | null;
-  completed_by_type: 'driver' | 'admin' | null;
-  completed_by_user_id: string | null;
-  image_url: string | null;
-  admin_reason: string | null;
-  notes: string | null;
+  completed_date?: string;
+  status: 'pending' | 'completed' | 'overdue';
+}
+
+export interface MinorRepair {
+  id: string;
+  driver_id: string;
+  vehicle_id: string;
+  description: string;
+  status: 'reported' | 'in_progress' | 'completed';
   created_at: string;
-  updated_at: string;
-  vehicle?: {
-    id: string;
-    license_plate: string;
-    brand: string;
-    model: string;
-    type: string;
-    driver?: {
-      id: string;
-      first_name: string | null;
-      last_name: string | null;
-      email: string;
-    } | null;
-  };
-  completed_by_user?: {
-    id: string;
-    name: string | null;
-    email: string;
-  } | null;
-};
+}
 
-export type WashCompletionData = {
-  schedule_id: string;
-  image_uri: string;
-  notes?: string;
-};
+export interface AccidentReport {
+  id: string;
+  driver_id: string;
+  vehicle_id: string;
+  accident_date: string;
+  description: string;
+  photos?: string[];
+  status: 'draft' | 'submitted' | 'under_review' | 'resolved';
+}
 
-export type OfflineWashCompletion = {
-  schedule_id: string;
-  image_uri: string;
+export interface DamageLog {
+  id: string;
+  driver_id: string;
+  vehicle_id: string;
+  damage_type: string;
+  description: string;
+  photos?: string[];
+  created_at: string;
+}
+
+export interface Breakdown {
+  id: string;
+  driver_id: string;
+  vehicle_id: string;
+  location?: string;
+  description: string;
+  status: 'reported' | 'assistance_dispatched' | 'resolved';
+  created_at: string;
+}
+
+export interface UniformRequest {
+  id: string;
+  driver_id: string;
+  item_type: string;
+  size: string;
+  quantity: number;
+  status: 'pending' | 'approved' | 'delivered';
+  created_at: string;
+}
+
+export interface Runsheet {
+  id: string;
+  driver_id: string;
+  date: string;
+  stops: RunsheetStop[];
+  status: 'active' | 'completed';
+}
+
+export interface RunsheetStop {
+  id: string;
+  address: string;
+  customer_name?: string;
+  status: 'pending' | 'completed' | 'failed';
   notes?: string;
-  timestamp: string;
-};
+}
+
+export interface ImportantNumber {
+  id: string;
+  name: string;
+  phone: string;
+  category?: string;
+}

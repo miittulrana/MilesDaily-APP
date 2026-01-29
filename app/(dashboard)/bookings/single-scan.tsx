@@ -13,6 +13,8 @@ import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { findBooking, getStatuses, updateBooking } from '../../../lib/bizhandleApi';
 import { Booking, Status } from '../../../lib/bizhandleTypes';
+import { getDriverInfo } from '../../../lib/auth';
+import { DriverType } from '../../../lib/statusPermissions';
 import BarcodeScanner from '../../../components/BarcodeScanner';
 import StatusSelector from '../../../components/StatusSelector';
 import LoadingIndicator from '../../../components/LoadingIndicator';
@@ -26,9 +28,10 @@ export default function SingleScanScreen() {
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<Status | null>(null);
   const [showStatusSelector, setShowStatusSelector] = useState(false);
+  const [driverTypes, setDriverTypes] = useState<DriverType[]>([]);
 
   useEffect(() => {
-    loadStatuses();
+    loadInitialData();
   }, []);
 
   useEffect(() => {
@@ -37,10 +40,28 @@ export default function SingleScanScreen() {
     }
   }, [params.bookingRef]);
 
+  const loadInitialData = async () => {
+    await Promise.all([
+      loadStatuses(),
+      loadDriverTypes()
+    ]);
+  };
+
   const loadStatuses = async () => {
     const result = await getStatuses();
     if (result.success && result.statuses) {
       setStatuses(result.statuses);
+    }
+  };
+
+  const loadDriverTypes = async () => {
+    try {
+      const driverInfo = await getDriverInfo();
+      if (driverInfo?.driver_types) {
+        setDriverTypes(driverInfo.driver_types as DriverType[]);
+      }
+    } catch (error) {
+      console.error('Error loading driver types:', error);
     }
   };
 
@@ -174,7 +195,12 @@ export default function SingleScanScreen() {
                 <Text style={styles.bookingTitle}>
                   {booking.miles_ref} {booking.hawb}
                 </Text>
-                <Text style={styles.bookingStatus}>{booking.status.name}</Text>
+                <Text style={[
+                  styles.bookingStatus,
+                  booking.status.status_id === 10 && styles.deliveredStatus
+                ]}>
+                  {booking.status.name}
+                </Text>
               </View>
             </View>
 
@@ -191,9 +217,23 @@ export default function SingleScanScreen() {
             )}
           </View>
 
+          {driverTypes.length > 0 && (
+            <View style={styles.driverTypeInfo}>
+              <Ionicons name="person-outline" size={16} color={colors.textLight} />
+              <Text style={styles.driverTypeText}>
+                Showing statuses for: {driverTypes.map(t => t.toUpperCase()).join(', ')}
+              </Text>
+            </View>
+          )}
+
           <View style={styles.statusSection}>
             <Text style={styles.sectionTitle}>Select Status</Text>
-            <StatusSelector statuses={statuses} onSelect={handleStatusSelect} />
+            <StatusSelector
+              statuses={statuses}
+              driverTypes={driverTypes}
+              currentStatusId={booking.status.status_id}
+              onSelect={handleStatusSelect}
+            />
           </View>
         </ScrollView>
       )}
@@ -248,6 +288,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textLight,
   },
+  deliveredStatus: {
+    color: colors.success,
+    fontWeight: '700',
+  },
   addressSection: {
     borderTopWidth: 1,
     borderTopColor: colors.gray200,
@@ -264,6 +308,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textLight,
     marginBottom: layouts.spacing.xs,
+  },
+  driverTypeInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.gray100,
+    padding: layouts.spacing.sm,
+    borderRadius: layouts.borderRadius.md,
+    marginBottom: layouts.spacing.md,
+    gap: layouts.spacing.xs,
+  },
+  driverTypeText: {
+    fontSize: 12,
+    color: colors.textLight,
   },
   statusSection: {
     marginBottom: layouts.spacing.lg,

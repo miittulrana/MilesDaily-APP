@@ -14,27 +14,55 @@ import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { findBooking, getStatuses, updateBooking } from '../../../lib/bizhandleApi';
 import { Booking, Status, ScannedBooking } from '../../../lib/bizhandleTypes';
+import { getDriverInfo } from '../../../lib/auth';
+import { DriverType } from '../../../lib/statusPermissions';
 import BarcodeScanner from '../../../components/BarcodeScanner';
 import StatusSelector from '../../../components/StatusSelector';
 import LoadingIndicator from '../../../components/LoadingIndicator';
+
+const DELIVERED_STATUS_ID = 10;
+
+interface ExtendedScannedBooking extends ScannedBooking {
+  current_status_id?: number;
+  current_status_name?: string;
+}
 
 export default function BulkScanScreen() {
   const router = useRouter();
   const [scanning, setScanning] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [scannedBookings, setScannedBookings] = useState<ScannedBooking[]>([]);
+  const [scannedBookings, setScannedBookings] = useState<ExtendedScannedBooking[]>([]);
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<Status | null>(null);
   const [showStatusSelector, setShowStatusSelector] = useState(false);
+  const [driverTypes, setDriverTypes] = useState<DriverType[]>([]);
 
   useEffect(() => {
-    loadStatuses();
+    loadInitialData();
   }, []);
+
+  const loadInitialData = async () => {
+    await Promise.all([
+      loadStatuses(),
+      loadDriverTypes()
+    ]);
+  };
 
   const loadStatuses = async () => {
     const result = await getStatuses();
     if (result.success && result.statuses) {
       setStatuses(result.statuses);
+    }
+  };
+
+  const loadDriverTypes = async () => {
+    try {
+      const driverInfo = await getDriverInfo();
+      if (driverInfo?.driver_types) {
+        setDriverTypes(driverInfo.driver_types as DriverType[]);
+      }
+    } catch (error) {
+      console.error('Error loading driver types:', error);
     }
   };
 
@@ -65,6 +93,16 @@ export default function BulkScanScreen() {
       return;
     }
 
+    if (booking.status.status_id === DELIVERED_STATUS_ID) {
+      Alert.alert(
+        'Already Delivered',
+        `Booking ${booking.miles_ref} ${booking.hawb} has already been delivered. It cannot be added to bulk scan.`,
+        [{ text: 'OK' }]
+      );
+      setLoading(false);
+      return;
+    }
+
     setScannedBookings([
       ...scannedBookings,
       {
@@ -72,6 +110,8 @@ export default function BulkScanScreen() {
         miles_ref: booking.miles_ref,
         hawb: booking.hawb,
         scanned_at: new Date().toISOString(),
+        current_status_id: booking.status.status_id,
+        current_status_name: booking.status.name,
       },
     ]);
 
@@ -179,13 +219,11 @@ export default function BulkScanScreen() {
     <View style={styles.container}>
       {scanning && !showStatusSelector && (
         <View style={styles.scanContainer}>
-          {/* Camera Scanner with built-in search */}
-          <BarcodeScanner 
+          <BarcodeScanner
             onScan={handleBarcodeScan}
             onManualSearch={handleManualSearch}
           />
 
-          {/* Bottom Controls - floating over camera */}
           {scannedBookings.length > 0 && (
             <View style={styles.bottomControls}>
               <View style={styles.counterCard}>
@@ -219,6 +257,11 @@ export default function BulkScanScreen() {
                     <Text style={styles.bookingItemText}>
                       {item.miles_ref} {item.hawb}
                     </Text>
+                    {item.current_status_name && (
+                      <Text style={styles.bookingItemStatus}>
+                        Current: {item.current_status_name}
+                      </Text>
+                    )}
                   </View>
                   <TouchableOpacity
                     onPress={() => handleRemoveBooking(item.booking_id)}
@@ -231,9 +274,22 @@ export default function BulkScanScreen() {
             />
           </View>
 
+          {driverTypes.length > 0 && (
+            <View style={styles.driverTypeInfo}>
+              <Ionicons name="person-outline" size={16} color={colors.textLight} />
+              <Text style={styles.driverTypeText}>
+                Showing statuses for: {driverTypes.map(t => t.toUpperCase()).join(', ')}
+              </Text>
+            </View>
+          )}
+
           <View style={styles.statusSection}>
             <Text style={styles.sectionTitle}>Select Status</Text>
-            <StatusSelector statuses={statuses} onSelect={handleStatusSelect} />
+            <StatusSelector
+              statuses={statuses}
+              driverTypes={driverTypes}
+              onSelect={handleStatusSelect}
+            />
           </View>
 
           <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
@@ -320,6 +376,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
+  },
+  bookingItemStatus: {
+    fontSize: 12,
+    color: colors.textLight,
+    marginTop: 2,
+  },
+  driverTypeInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.gray100,
+    padding: layouts.spacing.sm,
+    borderRadius: layouts.borderRadius.md,
+    marginBottom: layouts.spacing.md,
+    gap: layouts.spacing.xs,
+  },
+  driverTypeText: {
+    fontSize: 12,
+    color: colors.textLight,
   },
   statusSection: {
     marginBottom: layouts.spacing.lg,
