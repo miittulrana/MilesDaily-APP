@@ -31,11 +31,11 @@ export const fetchUniformTypes = async (): Promise<UniformType[]> => {
   try {
     const headers = await getAuthHeaders();
     const response = await fetch(`${API_BASE}/types`, { headers });
-    
+
     if (!response.ok) {
       throw new Error('Failed to fetch uniform types');
     }
-    
+
     const data = await response.json();
     return data.types || [];
   } catch (error) {
@@ -47,16 +47,16 @@ export const fetchUniformTypes = async (): Promise<UniformType[]> => {
 export const fetchUniformSizes = async (uniformTypeId?: string): Promise<UniformSize[]> => {
   try {
     const headers = await getAuthHeaders();
-    const url = uniformTypeId 
+    const url = uniformTypeId
       ? `${API_BASE}/sizes?uniform_type_id=${uniformTypeId}`
       : `${API_BASE}/sizes`;
-    
+
     const response = await fetch(url, { headers });
-    
+
     if (!response.ok) {
       throw new Error('Failed to fetch uniform sizes');
     }
-    
+
     const data = await response.json();
     return data.sizes || [];
   } catch (error) {
@@ -72,17 +72,17 @@ export const fetchUniformInventory = async (
   try {
     const headers = await getAuthHeaders();
     const params = new URLSearchParams();
-    
+
     if (uniformTypeId) params.append('uniform_type_id', uniformTypeId);
     if (category) params.append('category', category);
-    
+
     const url = `${API_BASE}/inventory${params.toString() ? `?${params.toString()}` : ''}`;
     const response = await fetch(url, { headers });
-    
+
     if (!response.ok) {
       throw new Error('Failed to fetch uniform inventory');
     }
-    
+
     const data = await response.json();
     return data.inventory || [];
   } catch (error) {
@@ -95,11 +95,11 @@ export const fetchDriverPreferences = async (): Promise<DriverSizePreference[]> 
   try {
     const headers = await getAuthHeaders();
     const response = await fetch(`${API_BASE}/preferences`, { headers });
-    
+
     if (!response.ok) {
       throw new Error('Failed to fetch driver preferences');
     }
-    
+
     const data = await response.json();
     return data.preferences || [];
   } catch (error) {
@@ -118,12 +118,12 @@ export const createDriverPreference = async (
       headers,
       body: JSON.stringify(preferenceData)
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.error || 'Failed to create preference');
     }
-    
+
     const data = await response.json();
     return data.preference;
   } catch (error) {
@@ -136,11 +136,11 @@ export const fetchUniformRequests = async (): Promise<UniformRequest[]> => {
   try {
     const headers = await getAuthHeaders();
     const response = await fetch(`${API_BASE}/requests`, { headers });
-    
+
     if (!response.ok) {
       throw new Error('Failed to fetch uniform requests');
     }
-    
+
     const data = await response.json();
     return data.requests || [];
   } catch (error) {
@@ -159,12 +159,12 @@ export const createUniformRequest = async (
       headers,
       body: JSON.stringify(requestData)
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.error || 'Failed to create uniform request');
     }
-    
+
     const data = await response.json();
     return data.request;
   } catch (error) {
@@ -177,11 +177,11 @@ export const fetchDriverAllocations = async (): Promise<DriverUniformAllocation[
   try {
     const headers = await getAuthHeaders();
     const response = await fetch(`${API_BASE}/allocations`, { headers });
-    
+
     if (!response.ok) {
       throw new Error('Failed to fetch driver allocations');
     }
-    
+
     const data = await response.json();
     return data.allocations || [];
   } catch (error) {
@@ -194,11 +194,11 @@ export const fetchUniformReturns = async (): Promise<UniformReturnRequest[]> => 
   try {
     const headers = await getAuthHeaders();
     const response = await fetch(`${API_BASE}/returns`, { headers });
-    
+
     if (!response.ok) {
       throw new Error('Failed to fetch uniform returns');
     }
-    
+
     const data = await response.json();
     return data.returns || [];
   } catch (error) {
@@ -217,12 +217,12 @@ export const createUniformReturn = async (
       headers,
       body: JSON.stringify(returnData)
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.error || 'Failed to create return request');
     }
-    
+
     const data = await response.json();
     return data.return_request;
   } catch (error) {
@@ -235,11 +235,11 @@ export const fetchSelfReportedUniforms = async (): Promise<SelfReportedUniform[]
   try {
     const headers = await getAuthHeaders();
     const response = await fetch(`${API_BASE}/self-report`, { headers });
-    
+
     if (!response.ok) {
       throw new Error('Failed to fetch self-reported uniforms');
     }
-    
+
     const data = await response.json();
     return data.self_reported || [];
   } catch (error) {
@@ -258,12 +258,12 @@ export const createSelfReportedUniform = async (
       headers,
       body: JSON.stringify(reportData)
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.error || 'Failed to create self-report');
     }
-    
+
     const data = await response.json();
     return data.self_report;
   } catch (error) {
