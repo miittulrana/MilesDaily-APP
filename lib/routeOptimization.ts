@@ -18,6 +18,18 @@ const geocodeCache = new Map<string, { lat: number; lng: number }>();
 
 const DEBUG_MODE = true;
 
+export function getGeocodeCache(): Map<string, { lat: number; lng: number }> {
+    return geocodeCache;
+}
+
+export function getGeocodeCacheAsObject(): { [key: string]: { lat: number; lng: number } } {
+    const obj: { [key: string]: { lat: number; lng: number } } = {};
+    geocodeCache.forEach((value, key) => {
+        obj[key] = value;
+    });
+    return obj;
+}
+
 export async function optimizeDeliveryRoute(
     bookings: RunsheetBooking[],
     startLocation: { lat: number; lng: number }
@@ -42,11 +54,19 @@ export async function optimizeDeliveryRoute(
 
     if (bookings.length === 1) {
         if (DEBUG_MODE) console.log('ℹ️  Only 1 booking, no optimization needed');
+        const address = buildFullAddress(bookings[0]);
+        const location = await geocodeAddress(address);
+        const waypoints: RouteWaypoint[] = location ? [{
+            location,
+            address,
+            bookingIndex: 0,
+        }] : [];
+
         return {
             optimizedBookings: bookings,
             totalDistance: 0,
             totalDuration: 0,
-            waypoints: [],
+            waypoints,
         };
     }
 
@@ -86,6 +106,20 @@ export async function optimizeDeliveryRoute(
 
         const optimizedBookings = optimizedOrder.map((index) => bookings[index]);
 
+        const optimizedWaypoints: RouteWaypoint[] = optimizedOrder
+            .map((index) => {
+                const dest = validDestinations.find(d => d.bookingIndex === index);
+                if (dest) {
+                    return {
+                        location: dest.location,
+                        address: dest.address,
+                        bookingIndex: index,
+                    };
+                }
+                return null;
+            })
+            .filter((wp): wp is RouteWaypoint => wp !== null);
+
         if (DEBUG_MODE) {
             printOptimizationResults(bookings, optimizedBookings);
         }
@@ -94,7 +128,7 @@ export async function optimizeDeliveryRoute(
             optimizedBookings,
             totalDistance: 0,
             totalDuration: 0,
-            waypoints: optimizedOrder.map((index) => validDestinations[index]),
+            waypoints: optimizedWaypoints,
         };
     } catch (error) {
         console.error('❌ Route optimization error:', error);
@@ -420,7 +454,9 @@ async function geocodeAddress(
 
         if (data.status === 'OK' && data.results.length > 0) {
             const location = data.results[0].geometry.location;
-            return { lat: location.lat, lng: location.lng };
+            const result = { lat: location.lat, lng: location.lng };
+            geocodeCache.set(address, result);
+            return result;
         }
 
         return null;

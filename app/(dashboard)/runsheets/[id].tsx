@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, Switch, RefreshControl } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +14,8 @@ import { AssignedRunsheet, RunsheetBooking, BookingStatusMap } from '../../../ut
 import { isBizhandleLoggedIn } from '../../../lib/bizhandleAuth';
 import { checkAcknowledgementExists, saveAcknowledgement } from '../../../lib/runsheetAcknowledgement';
 import { supabase } from '../../../lib/supabase';
+
+const geocodeCacheRef: { current: Map<string, { lat: number; lng: number }> } = { current: new Map() };
 
 export default function RunsheetDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -33,6 +35,7 @@ export default function RunsheetDetailScreen() {
     const [bookingStatuses, setBookingStatuses] = useState<BookingStatusMap>({});
     const [loadingStatuses, setLoadingStatuses] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
 
     useEffect(() => {
         loadRunsheetDetail();
@@ -131,8 +134,19 @@ export default function RunsheetDetailScreen() {
             await optimizeRoute();
         } else {
             setIsOptimized(false);
+            geocodeCacheRef.current.clear();
             filterAndSortBookings();
         }
+    };
+
+    const buildFullAddress = (booking: RunsheetBooking): string => {
+        const parts = [
+            booking.consignee_address,
+            booking.consignee_city,
+            booking.consignee_postcode,
+            'Malta',
+        ].filter(Boolean);
+        return parts.join(', ');
     };
 
     const optimizeRoute = async () => {
@@ -157,6 +171,8 @@ export default function RunsheetDetailScreen() {
                 lng: location.coords.longitude,
             };
 
+            setCurrentLocation(startLocation);
+
             let bookingsToOptimize = [...originalBookings];
             if (searchQuery) {
                 const query = searchQuery.toLowerCase();
@@ -175,6 +191,20 @@ export default function RunsheetDetailScreen() {
                 startLocation
             );
 
+            optimizedResult.waypoints.forEach((wp) => {
+                if (wp.location && wp.address) {
+                    geocodeCacheRef.current.set(wp.address, wp.location);
+                }
+            });
+
+            optimizedResult.optimizedBookings.forEach((booking) => {
+                const address = buildFullAddress(booking);
+                const waypoint = optimizedResult.waypoints.find(wp => wp.address === address);
+                if (waypoint && waypoint.location) {
+                    geocodeCacheRef.current.set(address, waypoint.location);
+                }
+            });
+
             setFilteredBookings(optimizedResult.optimizedBookings);
             setIsOptimized(true);
         } catch (err: any) {
@@ -187,6 +217,38 @@ export default function RunsheetDetailScreen() {
         } finally {
             setIsOptimizing(false);
         }
+    };
+
+    const handleViewMap = () => {
+        if (!isOptimized || filteredBookings.length === 0) {
+            Alert.alert('Route Not Optimized', 'Please optimize the route first to view the map.');
+            return;
+        }
+
+        const geocodedData: { [key: string]: { lat: number; lng: number } } = {};
+        geocodeCacheRef.current.forEach((value, key) => {
+            geocodedData[key] = value;
+        });
+
+        filteredBookings.forEach((booking) => {
+            const address = buildFullAddress(booking);
+            if (!geocodedData[address]) {
+                const waypoint = Array.from(geocodeCacheRef.current.entries()).find(([key]) =>
+                    key.includes(booking.consignee_address) || key.includes(booking.consignee_city)
+                );
+                if (waypoint) {
+                    geocodedData[address] = waypoint[1];
+                }
+            }
+        });
+
+        router.push({
+            pathname: '/(dashboard)/runsheets/route-map',
+            params: {
+                bookings: JSON.stringify(filteredBookings),
+                geocodedLocations: JSON.stringify(geocodedData),
+            },
+        });
     };
 
     const handleBookingPress = async (booking: RunsheetBooking) => {
@@ -314,6 +376,17 @@ export default function RunsheetDetailScreen() {
                         )}
                     </View>
                 </View>
+
+                {isOptimized && (
+                    <TouchableOpacity
+                        style={styles.viewMapButton}
+                        onPress={handleViewMap}
+                        activeOpacity={0.8}
+                    >
+                        <Ionicons name="map" size={20} color={colors.background} />
+                        <Text style={styles.viewMapButtonText}>View Map</Text>
+                    </TouchableOpacity>
+                )}
             </View>
 
             <View style={styles.controls}>
@@ -414,6 +487,7 @@ const styles = StyleSheet.create({
         padding: layouts.spacing.md,
         borderBottomWidth: 1,
         borderBottomColor: colors.gray200,
+        gap: layouts.spacing.sm,
     },
     optimizeRow: {
         flexDirection: 'row',
@@ -428,6 +502,21 @@ const styles = StyleSheet.create({
     },
     switchContainer: {
         marginLeft: layouts.spacing.sm,
+    },
+    viewMapButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.primary,
+        borderRadius: layouts.borderRadius.md,
+        paddingVertical: layouts.spacing.sm,
+        paddingHorizontal: layouts.spacing.lg,
+        gap: layouts.spacing.xs,
+    },
+    viewMapButtonText: {
+        color: colors.background,
+        fontSize: 14,
+        fontWeight: '700',
     },
     controls: {
         padding: layouts.spacing.md,
