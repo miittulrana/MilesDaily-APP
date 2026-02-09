@@ -94,6 +94,27 @@ export default function RouteMapView({
         setShowDetailModal(true);
     };
 
+    const openGoogleMapsNavigation = async (stop: OptimizedStopData) => {
+        const googleMapsUrl = `google.navigation:q=${stop.lat},${stop.lng}`;
+        const googleMapsWebUrl = `https://www.google.com/maps/dir/?api=1&destination=${stop.lat},${stop.lng}&travelmode=driving`;
+
+        try {
+            const canOpen = await Linking.canOpenURL(googleMapsUrl);
+            if (canOpen) {
+                await Linking.openURL(googleMapsUrl);
+            } else {
+                await Linking.openURL(googleMapsWebUrl);
+            }
+        } catch (error) {
+            console.error('Error opening Google Maps:', error);
+            try {
+                await Linking.openURL(googleMapsWebUrl);
+            } catch (webError) {
+                Alert.alert('Error', 'Failed to open Google Maps navigation.');
+            }
+        }
+    };
+
     const openWazeNavigation = async (stop: OptimizedStopData) => {
         const wazeUrl = `waze://?ll=${stop.lat},${stop.lng}&navigate=yes`;
         const wazeWebUrl = `https://waze.com/ul?ll=${stop.lat},${stop.lng}&navigate=yes`;
@@ -118,11 +139,32 @@ export default function RouteMapView({
         }
     };
 
+    const showNavigationChoice = (stop: OptimizedStopData) => {
+        Alert.alert(
+            'Navigate with',
+            `Choose your preferred navigation app\n\nDestination: ${stop.consignee_company || stop.consignee_name || 'Stop ' + stop.stop_number}`,
+            [
+                {
+                    text: 'Cancel',
+                    style: 'cancel'
+                },
+                {
+                    text: 'Waze',
+                    onPress: () => openWazeNavigation(stop)
+                },
+                {
+                    text: 'Google Maps',
+                    onPress: () => openGoogleMapsNavigation(stop)
+                }
+            ]
+        );
+    };
+
     const handleNavigateFromModal = () => {
         if (selectedStop) {
             setShowDetailModal(false);
             setTimeout(() => {
-                openWazeNavigation(selectedStop);
+                showNavigationChoice(selectedStop);
             }, 300);
         }
     };

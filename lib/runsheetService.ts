@@ -126,10 +126,6 @@ export async function fetchRunsheetDetail(runsheetId: string): Promise<AssignedR
     }
 }
 
-/**
- * Fetch route optimization data by optimization_id (NOT runsheet_id)
- * The optimization_id is stored in runsheet_assignments_app when "Assign Optimized" is clicked
- */
 export async function fetchRouteOptimization(optimizationId: string): Promise<RouteOptimizationData | null> {
     try {
         console.log('[fetchRouteOptimization] Fetching optimization by ID:', optimizationId);
@@ -246,7 +242,6 @@ LEFT JOIN miles_production.status s ON s.status_id = bs.status_id
 LEFT JOIN miles_production.staff staff ON staff.staff_id = bs.staff_id
 WHERE bs.booking_id IN (${bookingIdsStr})
     AND bs.deleted_at IS NULL
-    AND bs.status_id >= 41
 ORDER BY bs.booking_id, bs.delivered_date DESC, bs.delivered_time DESC, bs.booking_status_id DESC
         `;
 
@@ -267,14 +262,14 @@ ORDER BY bs.booking_id, bs.delivered_date DESC, bs.delivered_time DESC, bs.booki
             );
 
             if (milesRef) {
-                const showStaffName = row.staff_id !== originalStaffId;
+                const isOtherStaff = String(row.staff_id) !== String(originalStaffId);
 
                 statusMap[milesRef] = {
                     booking_id: row.booking_id,
                     status_id: row.status_id,
                     status_name: row.status_name || 'Unknown Status',
                     staff_id: row.staff_id,
-                    staff_name: showStaffName ? (row.staff_name || 'Unknown') : '',
+                    staff_name: isOtherStaff ? (row.staff_name || 'Unknown') : '',
                     delivered_date: row.delivered_date,
                     delivered_time: row.delivered_time
                 };
