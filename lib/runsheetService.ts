@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { supabaseBizhandle } from './bizhandleClient';
-import { AssignedRunsheet, RunsheetBooking, BookingStatusMap } from '../utils/runsheetTypes';
+import { AssignedRunsheet, RunsheetBooking, BookingStatusMap, RouteOptimizationData } from '../utils/runsheetTypes';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://fleet-staging.milesxp.com';
 
@@ -20,27 +20,29 @@ export async function fetchAssignedRunsheets(dateFrom: string, dateTo: string): 
         const { data, error } = await supabase
             .from('runsheet_assignments_app')
             .select(`
-        id,
-        runsheet_id,
-        driver_id,
-        assigned_at,
-        assigned_by,
-        status,
-        created_at,
-        updated_at,
-        runsheet:runsheet_generator (
-          id,
-          staff_id,
-          staff_name,
-          date_from,
-          date_to,
-          csv_data,
-          report_type,
-          report_subtype,
-          created_at,
-          updated_at
-        )
-      `)
+                id,
+                runsheet_id,
+                driver_id,
+                assigned_at,
+                assigned_by,
+                status,
+                is_optimized,
+                optimization_id,
+                created_at,
+                updated_at,
+                runsheet:runsheet_generator (
+                    id,
+                    staff_id,
+                    staff_name,
+                    date_from,
+                    date_to,
+                    csv_data,
+                    report_type,
+                    report_subtype,
+                    created_at,
+                    updated_at
+                )
+            `)
             .eq('driver_id', driverId)
             .gte('assigned_at', startOfDay)
             .lte('assigned_at', endOfDay)
@@ -50,7 +52,13 @@ export async function fetchAssignedRunsheets(dateFrom: string, dateTo: string): 
             throw error;
         }
 
-        return (data || []) as AssignedRunsheet[];
+        const processedData = (data || []).map(item => ({
+            ...item,
+            is_optimized: item.is_optimized || false,
+            optimization_id: item.optimization_id || null
+        }));
+
+        return processedData as AssignedRunsheet[];
     } catch (error: any) {
         console.error('Error fetching assigned runsheets:', error);
         throw new Error(error.message || 'Failed to fetch runsheets');
@@ -70,27 +78,29 @@ export async function fetchRunsheetDetail(runsheetId: string): Promise<AssignedR
         const { data, error } = await supabase
             .from('runsheet_assignments_app')
             .select(`
-        id,
-        runsheet_id,
-        driver_id,
-        assigned_at,
-        assigned_by,
-        status,
-        created_at,
-        updated_at,
-        runsheet:runsheet_generator (
-          id,
-          staff_id,
-          staff_name,
-          date_from,
-          date_to,
-          csv_data,
-          report_type,
-          report_subtype,
-          created_at,
-          updated_at
-        )
-      `)
+                id,
+                runsheet_id,
+                driver_id,
+                assigned_at,
+                assigned_by,
+                status,
+                is_optimized,
+                optimization_id,
+                created_at,
+                updated_at,
+                runsheet:runsheet_generator (
+                    id,
+                    staff_id,
+                    staff_name,
+                    date_from,
+                    date_to,
+                    csv_data,
+                    report_type,
+                    report_subtype,
+                    created_at,
+                    updated_at
+                )
+            `)
             .eq('driver_id', driverId)
             .eq('runsheet_id', runsheetId)
             .single();
@@ -103,10 +113,63 @@ export async function fetchRunsheetDetail(runsheetId: string): Promise<AssignedR
             throw new Error('Runsheet not found');
         }
 
-        return data as AssignedRunsheet;
+        const processedData = {
+            ...data,
+            is_optimized: data.is_optimized || false,
+            optimization_id: data.optimization_id || null
+        };
+
+        return processedData as AssignedRunsheet;
     } catch (error: any) {
         console.error('Error fetching runsheet detail:', error);
         throw new Error(error.message || 'Failed to fetch runsheet detail');
+    }
+}
+
+/**
+ * Fetch route optimization data by optimization_id (NOT runsheet_id)
+ * The optimization_id is stored in runsheet_assignments_app when "Assign Optimized" is clicked
+ */
+export async function fetchRouteOptimization(optimizationId: string): Promise<RouteOptimizationData | null> {
+    try {
+        console.log('[fetchRouteOptimization] Fetching optimization by ID:', optimizationId);
+        
+        const { data, error } = await supabase
+            .from('route_optimizations')
+            .select(`
+                id,
+                runsheet_id,
+                optimized_stops,
+                failed_stops,
+                total_distance_km,
+                total_duration_minutes,
+                cluster_count,
+                departure_time,
+                status,
+                created_at,
+                updated_at
+            `)
+            .eq('id', optimizationId)
+            .eq('status', 'completed')
+            .single();
+
+        if (error) {
+            console.error('[fetchRouteOptimization] Error:', error);
+            return null;
+        }
+
+        console.log('[fetchRouteOptimization] Found optimization:', {
+            id: data?.id,
+            status: data?.status,
+            stops_count: data?.optimized_stops?.length || 0,
+            distance: data?.total_distance_km,
+            duration: data?.total_duration_minutes
+        });
+
+        return data as RouteOptimizationData;
+    } catch (error: any) {
+        console.error('[fetchRouteOptimization] Exception:', error);
+        return null;
     }
 }
 
@@ -135,7 +198,6 @@ export async function fetchBookingStatuses(
             return {};
         }
 
-        // Step 1: Look up booking_ids from miles_ref
         const milesRefs = bookings.map(b => `'${b.miles_ref}'`).join(',');
 
         const lookupQuery = `
@@ -157,7 +219,6 @@ LIMIT 500
             return {};
         }
 
-        // Create map of miles_ref -> booking_id
         const refToIdMap: { [key: string]: number } = {};
         lookupData.forEach((row: any) => {
             refToIdMap[row.miles_ref] = row.booking_id;
@@ -169,7 +230,6 @@ LIMIT 500
             return {};
         }
 
-        // Step 2: Fetch statuses for those booking_ids
         const bookingIdsStr = bookingIds.join(',');
 
         const statusQuery = `
@@ -199,11 +259,9 @@ ORDER BY bs.booking_id, bs.delivered_date DESC, bs.delivered_time DESC, bs.booki
             return {};
         }
 
-        // Step 3: Create status map by miles_ref (not booking_id)
         const statusMap: BookingStatusMap = {};
 
         (statusData || []).forEach((row: any) => {
-            // Find the miles_ref for this booking_id
             const milesRef = Object.keys(refToIdMap).find(
                 ref => refToIdMap[ref] === row.booking_id
             );

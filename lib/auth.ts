@@ -57,29 +57,41 @@ export const getDriverInfo = async (): Promise<DriverInfo | null> => {
 
 export const getAssignedVehicle = async (driverId: string) => {
   try {
+    // Method 1: Check vehicle_assignments table
     const { data: assignment, error: assignmentError } = await supabase
       .from('vehicle_assignments')
       .select('vehicle_id')
       .eq('driver_id', driverId)
-      .eq('is_active', true)
+      .is('unassigned_at', null)
+      .order('assigned_at', { ascending: false })
+      .limit(1)
       .single();
 
-    if (assignmentError || !assignment) {
-      return null;
+    if (!assignmentError && assignment) {
+      const { data: vehicle, error: vehicleError } = await supabase
+        .from('vehicles')
+        .select('*')
+        .eq('id', assignment.vehicle_id)
+        .single();
+
+      if (!vehicleError && vehicle) {
+        return vehicle;
+      }
     }
 
+    // Method 2: Fallback - check vehicles table directly
     const { data: vehicle, error: vehicleError } = await supabase
       .from('vehicles')
       .select('*')
-      .eq('id', assignment.vehicle_id)
+      .eq('driver_id', driverId)
+      .eq('status', 'assigned')
       .single();
 
-    if (vehicleError) {
-      console.error('Error fetching vehicle:', vehicleError);
-      return null;
+    if (!vehicleError && vehicle) {
+      return vehicle;
     }
 
-    return vehicle;
+    return null;
   } catch (error) {
     console.error('Get assigned vehicle error:', error);
     return null;

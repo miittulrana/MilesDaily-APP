@@ -88,6 +88,12 @@ export default function RunsheetsScreen() {
     const renderRunsheet = ({ item }: { item: RunsheetWithAcknowledgement }) => (
         <View style={styles.cardWrapper}>
             <View style={styles.badgeContainer}>
+                {item.is_optimized && (
+                    <View style={styles.optimizedBadge}>
+                        <Ionicons name="navigate-circle" size={14} color={colors.background} />
+                        <Text style={styles.badgeText}>Optimized</Text>
+                    </View>
+                )}
                 {item.isAcknowledged ? (
                     <View style={styles.acknowledgedBadge}>
                         <Ionicons name="checkmark-circle" size={14} color={colors.background} />
@@ -104,6 +110,7 @@ export default function RunsheetsScreen() {
                 runsheet={item}
                 onPress={() => handleRunsheetPress(item)}
                 isAcknowledged={item.isAcknowledged}
+                isOptimized={item.is_optimized}
                 onViewAcknowledgement={() => handleViewAcknowledgement(item)}
             />
         </View>
@@ -185,7 +192,23 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         zIndex: 10,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: layouts.spacing.sm,
+    },
+    optimizedBadge: {
+        flexDirection: 'row',
         alignItems: 'center',
+        backgroundColor: colors.info,
+        paddingHorizontal: layouts.spacing.sm,
+        paddingVertical: 4,
+        borderRadius: layouts.borderRadius.full,
+        gap: 4,
+        shadowColor: colors.shadow,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
+        elevation: 5,
     },
     acknowledgedBadge: {
         flexDirection: 'row',

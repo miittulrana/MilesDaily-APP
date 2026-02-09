@@ -10,10 +10,11 @@ interface RunsheetCardProps {
     runsheet: AssignedRunsheet;
     onPress: () => void;
     isAcknowledged?: boolean;
+    isOptimized?: boolean;
     onViewAcknowledgement?: () => void;
 }
 
-export default function RunsheetCard({ runsheet, onPress, isAcknowledged, onViewAcknowledgement }: RunsheetCardProps) {
+export default function RunsheetCard({ runsheet, onPress, isAcknowledged, isOptimized, onViewAcknowledgement }: RunsheetCardProps) {
     const getReportTypeLabel = (type: string, subtype?: string | null) => {
         switch (type) {
             case 'delivery':
@@ -24,6 +25,8 @@ export default function RunsheetCard({ runsheet, onPress, isAcknowledged, onView
                 return 'End of Day Report';
             case 'sub_contractor':
                 return `Sub-Contractor ${subtype === 'morning' ? '(Morning)' : '(Afternoon)'}`;
+            case 'digital_delivery':
+                return 'Digital Delivery';
             default:
                 return 'Run-Sheet';
         }
@@ -39,6 +42,8 @@ export default function RunsheetCard({ runsheet, onPress, isAcknowledged, onView
                 return colors.warning;
             case 'sub_contractor':
                 return colors.primary;
+            case 'digital_delivery':
+                return colors.info;
             default:
                 return colors.gray500;
         }
@@ -66,20 +71,28 @@ export default function RunsheetCard({ runsheet, onPress, isAcknowledged, onView
             <View style={styles.header}>
                 <View style={styles.titleContainer}>
                     <Text style={styles.driverName}>{runsheet.runsheet.staff_name}</Text>
-                    <View
-                        style={[
-                            styles.typeBadge,
-                            { backgroundColor: getReportTypeColor(runsheet.runsheet.report_type) + '20' },
-                        ]}
-                    >
-                        <Text
+                    <View style={styles.badgesRow}>
+                        <View
                             style={[
-                                styles.typeBadgeText,
-                                { color: getReportTypeColor(runsheet.runsheet.report_type) },
+                                styles.typeBadge,
+                                { backgroundColor: getReportTypeColor(runsheet.runsheet.report_type) + '20' },
                             ]}
                         >
-                            {getReportTypeLabel(runsheet.runsheet.report_type, runsheet.runsheet.report_subtype)}
-                        </Text>
+                            <Text
+                                style={[
+                                    styles.typeBadgeText,
+                                    { color: getReportTypeColor(runsheet.runsheet.report_type) },
+                                ]}
+                            >
+                                {getReportTypeLabel(runsheet.runsheet.report_type, runsheet.runsheet.report_subtype)}
+                            </Text>
+                        </View>
+                        {isOptimized && (
+                            <View style={styles.optimizedBadge}>
+                                <Ionicons name="navigate-circle" size={12} color={colors.info} />
+                                <Text style={styles.optimizedBadgeText}>Optimized</Text>
+                            </View>
+                        )}
                     </View>
                 </View>
                 <View style={styles.headerRight}>
@@ -133,6 +146,12 @@ export default function RunsheetCard({ runsheet, onPress, isAcknowledged, onView
                 <Text style={styles.assignedText}>
                     Assigned {formatDate(runsheet.assigned_at)}
                 </Text>
+                {isOptimized && (
+                    <View style={styles.mapHint}>
+                        <Ionicons name="map-outline" size={12} color={colors.info} />
+                        <Text style={styles.mapHintText}>Route map available</Text>
+                    </View>
+                )}
             </View>
         </TouchableOpacity>
     );
@@ -168,8 +187,12 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: colors.text,
     },
+    badgesRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: layouts.spacing.xs,
+    },
     typeBadge: {
-        alignSelf: 'flex-start',
         paddingVertical: layouts.spacing.xs,
         paddingHorizontal: layouts.spacing.sm,
         borderRadius: layouts.borderRadius.full,
@@ -177,6 +200,20 @@ const styles = StyleSheet.create({
     typeBadgeText: {
         fontSize: 11,
         fontWeight: '600',
+    },
+    optimizedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: layouts.spacing.xs,
+        paddingHorizontal: layouts.spacing.sm,
+        borderRadius: layouts.borderRadius.full,
+        backgroundColor: colors.info + '20',
+        gap: 4,
+    },
+    optimizedBadgeText: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: colors.info,
     },
     headerRight: {
         flexDirection: 'row',
@@ -186,8 +223,8 @@ const styles = StyleSheet.create({
     viewButton: {
         width: 36,
         height: 36,
-        borderRadius: layouts.borderRadius.full,
-        backgroundColor: colors.primaryLight,
+        borderRadius: layouts.borderRadius.md,
+        backgroundColor: colors.primary + '15',
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -198,48 +235,64 @@ const styles = StyleSheet.create({
         marginBottom: layouts.spacing.md,
     },
     dateText: {
-        fontSize: 12,
+        fontSize: 13,
         color: colors.textLight,
     },
     statsContainer: {
         flexDirection: 'row',
+        alignItems: 'center',
         backgroundColor: colors.gray100,
         borderRadius: layouts.borderRadius.md,
-        padding: layouts.spacing.sm,
-        marginBottom: layouts.spacing.sm,
+        paddingVertical: layouts.spacing.md,
+        paddingHorizontal: layouts.spacing.lg,
     },
     statBox: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: layouts.spacing.xs,
+        justifyContent: 'center',
+        gap: layouts.spacing.sm,
     },
     statContent: {
-        flex: 1,
+        alignItems: 'flex-start',
     },
     statValue: {
-        fontSize: 15,
+        fontSize: 16,
         fontWeight: '700',
         color: colors.text,
     },
     statLabel: {
         fontSize: 10,
         color: colors.textLight,
+        marginTop: 1,
     },
     statDivider: {
         width: 1,
-        height: 35,
+        height: 30,
         backgroundColor: colors.gray300,
-        marginHorizontal: layouts.spacing.xs,
+        marginHorizontal: layouts.spacing.sm,
     },
     footer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: layouts.spacing.md,
+        paddingTop: layouts.spacing.sm,
         borderTopWidth: 1,
         borderTopColor: colors.gray200,
-        paddingTop: layouts.spacing.sm,
     },
     assignedText: {
         fontSize: 11,
         color: colors.textLight,
-        fontStyle: 'italic',
+    },
+    mapHint: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    mapHintText: {
+        fontSize: 11,
+        color: colors.info,
+        fontWeight: '500',
     },
 });

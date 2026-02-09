@@ -1,130 +1,101 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking, Alert, ActionSheetIOS, Dimensions, Modal } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking, Alert, ActionSheetIOS, Modal, ScrollView } from 'react-native';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
-import { RunsheetBooking } from '../../utils/runsheetTypes';
+import { OptimizedStopData } from '../../utils/runsheetTypes';
+
+const WAREHOUSE = { latitude: 35.875204, longitude: 14.4945183 };
+const MALTA_REGION: Region = {
+    latitude: 35.9375,
+    longitude: 14.3754,
+    latitudeDelta: 0.15,
+    longitudeDelta: 0.15,
+};
 
 interface RouteMapViewProps {
-    bookings: RunsheetBooking[];
+    optimizedStops: OptimizedStopData[];
     currentLocation: {
         latitude: number;
         longitude: number;
     } | null;
-    geocodedLocations: Map<string, { lat: number; lng: number }>;
+    staffName: string;
+    totalDistance: number;
+    totalDuration: number;
+    departureTime: string;
     onClose?: () => void;
 }
 
-interface MarkerData {
-    booking: RunsheetBooking;
-    coordinate: {
-        latitude: number;
-        longitude: number;
-    };
-    sequenceNumber: number;
-}
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
 export default function RouteMapView({
-    bookings,
+    optimizedStops,
     currentLocation,
-    geocodedLocations,
+    staffName,
+    totalDistance,
+    totalDuration,
+    departureTime,
     onClose
 }: RouteMapViewProps) {
     const mapRef = useRef<MapView>(null);
-    const [markers, setMarkers] = useState<MarkerData[]>([]);
-    const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[]>([]);
-    const [selectedMarker, setSelectedMarker] = useState<MarkerData | null>(null);
+    const [selectedStop, setSelectedStop] = useState<OptimizedStopData | null>(null);
     const [showDetailModal, setShowDetailModal] = useState(false);
+    const [mapReady, setMapReady] = useState(false);
+
+    const validStops = optimizedStops.filter(stop => 
+        stop.lat && stop.lng && 
+        stop.lat !== 0 && stop.lng !== 0 &&
+        stop.lat > 35 && stop.lat < 37 &&
+        stop.lng > 14 && stop.lng < 15
+    );
 
     useEffect(() => {
-        prepareMapData();
-    }, [bookings, geocodedLocations]);
-
-    useEffect(() => {
-        if (markers.length > 0 && mapRef.current) {
+        if (mapReady && validStops.length > 0 && mapRef.current) {
             setTimeout(() => {
                 fitMapToMarkers();
-            }, 500);
+            }, 1000);
         }
-    }, [markers]);
-
-    const prepareMapData = () => {
-        const markerList: MarkerData[] = [];
-        const coordinates: { latitude: number; longitude: number }[] = [];
-
-        if (currentLocation) {
-            coordinates.push({
-                latitude: currentLocation.latitude,
-                longitude: currentLocation.longitude,
-            });
-        }
-
-        bookings.forEach((booking, index) => {
-            const address = buildFullAddress(booking);
-            const location = geocodedLocations.get(address);
-
-            if (location) {
-                const coordinate = {
-                    latitude: location.lat,
-                    longitude: location.lng,
-                };
-
-                markerList.push({
-                    booking,
-                    coordinate,
-                    sequenceNumber: index + 1,
-                });
-
-                coordinates.push(coordinate);
-            }
-        });
-
-        setMarkers(markerList);
-        setRouteCoordinates(coordinates);
-    };
-
-    const buildFullAddress = (booking: RunsheetBooking): string => {
-        const parts = [
-            booking.consignee_address,
-            booking.consignee_city,
-            booking.consignee_postcode,
-            'Malta',
-        ].filter(Boolean);
-        return parts.join(', ');
-    };
+    }, [mapReady, validStops.length]);
 
     const fitMapToMarkers = () => {
-        if (markers.length === 0 || !mapRef.current) return;
+        if (validStops.length === 0 || !mapRef.current) {
+            mapRef.current?.animateToRegion(MALTA_REGION, 500);
+            return;
+        }
 
-        const allCoordinates = [...markers.map(m => m.coordinate)];
-        if (currentLocation) {
-            allCoordinates.push({
-                latitude: currentLocation.latitude,
-                longitude: currentLocation.longitude,
-            });
+        const allCoordinates = [
+            WAREHOUSE,
+            ...validStops.map(stop => ({
+                latitude: stop.lat,
+                longitude: stop.lng,
+            })),
+        ];
+
+        if (currentLocation && currentLocation.latitude > 35 && currentLocation.latitude < 37) {
+            allCoordinates.push(currentLocation);
         }
 
         try {
             mapRef.current.fitToCoordinates(allCoordinates, {
-                edgePadding: { top: 100, right: 50, bottom: 150, left: 50 },
+                edgePadding: { top: 150, right: 80, bottom: 220, left: 80 },
                 animated: true,
             });
         } catch (e) {
             console.log('fitToCoordinates error:', e);
+            mapRef.current?.animateToRegion(MALTA_REGION, 500);
         }
     };
 
-    const handleMarkerPress = (marker: MarkerData) => {
-        setSelectedMarker(marker);
+    const handleMapReady = () => {
+        setMapReady(true);
+    };
+
+    const handleMarkerPress = (stop: OptimizedStopData) => {
+        setSelectedStop(stop);
         setShowDetailModal(true);
     };
 
-    const openNavigationApp = (marker: MarkerData) => {
-        const { latitude, longitude } = marker.coordinate;
-        const destination = `${latitude},${longitude}`;
+    const openNavigationApp = (stop: OptimizedStopData) => {
+        const destination = `${stop.lat},${stop.lng}`;
 
         const googleMapsUrl = Platform.select({
             ios: `comgooglemaps://?daddr=${destination}&directionsmode=driving`,
@@ -132,33 +103,33 @@ export default function RouteMapView({
         });
 
         const appleMapsUrl = `maps://?daddr=${destination}&dirflg=d`;
-        const wazeUrl = `waze://?ll=${latitude},${longitude}&navigate=yes`;
+        const wazeUrl = `waze://?ll=${stop.lat},${stop.lng}&navigate=yes`;
         const googleMapsWebUrl = `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
 
         if (Platform.OS === 'ios') {
             ActionSheetIOS.showActionSheetWithOptions(
                 {
-                    options: ['Cancel', 'Google Maps', 'Apple Maps', 'Waze'],
+                    options: ['Cancel', 'Waze', 'Google Maps', 'Apple Maps'],
                     cancelButtonIndex: 0,
                     title: 'Choose Navigation App',
                 },
                 async (buttonIndex) => {
                     if (buttonIndex === 1) {
-                        const canOpen = await Linking.canOpenURL(googleMapsUrl!);
-                        if (canOpen) {
-                            Linking.openURL(googleMapsUrl!);
-                        } else {
-                            Linking.openURL(googleMapsWebUrl);
-                        }
-                    } else if (buttonIndex === 2) {
-                        Linking.openURL(appleMapsUrl);
-                    } else if (buttonIndex === 3) {
                         const canOpen = await Linking.canOpenURL(wazeUrl);
                         if (canOpen) {
                             Linking.openURL(wazeUrl);
                         } else {
                             Alert.alert('Waze Not Installed', 'Please install Waze to use this option.');
                         }
+                    } else if (buttonIndex === 2) {
+                        const canOpen = await Linking.canOpenURL(googleMapsUrl!);
+                        if (canOpen) {
+                            Linking.openURL(googleMapsUrl!);
+                        } else {
+                            Linking.openURL(googleMapsWebUrl);
+                        }
+                    } else if (buttonIndex === 3) {
+                        Linking.openURL(appleMapsUrl);
                     }
                 }
             );
@@ -168,17 +139,6 @@ export default function RouteMapView({
                 'Select your preferred navigation app',
                 [
                     { text: 'Cancel', style: 'cancel' },
-                    {
-                        text: 'Google Maps',
-                        onPress: async () => {
-                            const canOpen = await Linking.canOpenURL(googleMapsUrl!);
-                            if (canOpen) {
-                                Linking.openURL(googleMapsUrl!);
-                            } else {
-                                Linking.openURL(googleMapsWebUrl);
-                            }
-                        },
-                    },
                     {
                         text: 'Waze',
                         onPress: async () => {
@@ -190,24 +150,63 @@ export default function RouteMapView({
                             }
                         },
                     },
+                    {
+                        text: 'Google Maps',
+                        onPress: async () => {
+                            const canOpen = await Linking.canOpenURL(googleMapsUrl!);
+                            if (canOpen) {
+                                Linking.openURL(googleMapsUrl!);
+                            } else {
+                                Linking.openURL(googleMapsWebUrl);
+                            }
+                        },
+                    },
                 ]
             );
         }
     };
 
     const handleNavigateFromModal = () => {
-        if (selectedMarker) {
+        if (selectedStop) {
             setShowDetailModal(false);
             setTimeout(() => {
-                openNavigationApp(selectedMarker);
+                openNavigationApp(selectedStop);
             }, 300);
         }
     };
 
-    const renderDetailModal = () => {
-        if (!selectedMarker) return null;
+    const handleCallPhone = (phone: string) => {
+        const phoneUrl = `tel:${phone.replace(/\s/g, '')}`;
+        Linking.openURL(phoneUrl);
+    };
 
-        const marker = selectedMarker;
+    const getConfidenceColor = (confidence: string) => {
+        if (confidence === 'high') return colors.success;
+        if (confidence === 'medium') return colors.warning;
+        if (confidence === 'low') return colors.error;
+        return colors.gray400;
+    };
+
+    const routeCoordinates = [
+        WAREHOUSE,
+        ...validStops.map(stop => ({
+            latitude: stop.lat,
+            longitude: stop.lng,
+        })),
+        WAREHOUSE,
+    ];
+
+    const formatDuration = (minutes: number) => {
+        const hours = Math.floor(minutes / 60);
+        const mins = Math.round(minutes % 60);
+        if (hours > 0) {
+            return `${hours}h ${mins}m`;
+        }
+        return `${mins}m`;
+    };
+
+    const renderDetailModal = () => {
+        if (!selectedStop) return null;
 
         return (
             <Modal
@@ -230,13 +229,11 @@ export default function RouteMapView({
 
                         <View style={styles.modalHeader}>
                             <View style={styles.modalSequenceBadge}>
-                                <Text style={styles.modalSequenceText}>{marker.sequenceNumber}</Text>
+                                <Text style={styles.modalSequenceText}>{selectedStop.stop_number}</Text>
                             </View>
                             <View style={styles.modalHeaderText}>
-                                <Text style={styles.modalMilesRef}>{marker.booking.miles_ref}</Text>
-                                {marker.booking.hawb && (
-                                    <Text style={styles.modalHawb}>HAWB: {marker.booking.hawb}</Text>
-                                )}
+                                <Text style={styles.modalMilesRef}>{selectedStop.miles_ref}</Text>
+                                <Text style={styles.modalEta}>ETA: {selectedStop.eta}</Text>
                             </View>
                             <TouchableOpacity
                                 style={styles.modalCloseButton}
@@ -248,71 +245,92 @@ export default function RouteMapView({
 
                         <View style={styles.modalDivider} />
 
-                        <View style={styles.modalSection}>
-                            <View style={styles.modalRow}>
-                                <Ionicons name="business" size={18} color={colors.primary} />
-                                <Text style={styles.modalLabel}>Company</Text>
-                            </View>
-                            <Text style={styles.modalValue}>{marker.booking.consignee_company || 'N/A'}</Text>
-                        </View>
-
-                        {marker.booking.consignee_name && (
+                        <ScrollView style={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
                             <View style={styles.modalSection}>
                                 <View style={styles.modalRow}>
-                                    <Ionicons name="person" size={18} color={colors.primary} />
-                                    <Text style={styles.modalLabel}>Contact</Text>
+                                    <Ionicons name="business" size={18} color={colors.primary} />
+                                    <Text style={styles.modalLabel}>Company</Text>
                                 </View>
-                                <Text style={styles.modalValue}>{marker.booking.consignee_name}</Text>
+                                <Text style={styles.modalValue}>{selectedStop.consignee_company || 'N/A'}</Text>
                             </View>
-                        )}
 
-                        <View style={styles.modalSection}>
-                            <View style={styles.modalRow}>
-                                <Ionicons name="location" size={18} color={colors.primary} />
-                                <Text style={styles.modalLabel}>Address</Text>
-                            </View>
-                            <Text style={styles.modalValue}>
-                                {marker.booking.consignee_address}
-                            </Text>
-                            <Text style={styles.modalValueSecondary}>
-                                {marker.booking.consignee_city}
-                                {marker.booking.consignee_postcode ? `, ${marker.booking.consignee_postcode}` : ''}
-                            </Text>
-                        </View>
-
-                        {marker.booking.consignee_mobile && (
-                            <View style={styles.modalSection}>
-                                <View style={styles.modalRow}>
-                                    <Ionicons name="call" size={18} color={colors.primary} />
-                                    <Text style={styles.modalLabel}>Mobile</Text>
-                                </View>
-                                <Text style={styles.modalValue}>{marker.booking.consignee_mobile}</Text>
-                            </View>
-                        )}
-
-                        <View style={styles.modalStats}>
-                            <View style={styles.modalStatItem}>
-                                <Ionicons name="cube-outline" size={20} color={colors.primary} />
-                                <Text style={styles.modalStatValue}>{marker.booking.total_pieces}</Text>
-                                <Text style={styles.modalStatLabel}>Pieces</Text>
-                            </View>
-                            <View style={styles.modalStatDivider} />
-                            <View style={styles.modalStatItem}>
-                                <Ionicons name="barbell-outline" size={20} color={colors.primary} />
-                                <Text style={styles.modalStatValue}>{parseFloat(marker.booking.total_weight).toFixed(1)}</Text>
-                                <Text style={styles.modalStatLabel}>Kg</Text>
-                            </View>
-                            {marker.booking.service_type && (
-                                <>
-                                    <View style={styles.modalStatDivider} />
-                                    <View style={styles.modalStatItem}>
-                                        <Ionicons name="flash-outline" size={20} color={colors.primary} />
-                                        <Text style={styles.modalStatValue}>{marker.booking.service_type}</Text>
-                                        <Text style={styles.modalStatLabel}>Service</Text>
+                            {selectedStop.consignee_name && (
+                                <View style={styles.modalSection}>
+                                    <View style={styles.modalRow}>
+                                        <Ionicons name="person" size={18} color={colors.primary} />
+                                        <Text style={styles.modalLabel}>Contact</Text>
                                     </View>
-                                </>
+                                    <Text style={styles.modalValue}>{selectedStop.consignee_name}</Text>
+                                </View>
                             )}
-                        </View>
+
+                            <View style={styles.modalSection}>
+                                <View style={styles.modalRow}>
+                                    <Ionicons name="location" size={18} color={colors.primary} />
+                                    <Text style={styles.modalLabel}>Address</Text>
+                                </View>
+                                <Text style={styles.modalValue}>
+                                    {selectedStop.cleaned_address || selectedStop.consignee_address}
+                                </Text>
+                                <Text style={styles.modalValueSecondary}>
+                                    {selectedStop.consignee_city}
+                                    {selectedStop.consignee_postcode ? `, ${selectedStop.consignee_postcode}` : ''}
+                                </Text>
+                                <View style={styles.confidenceRow}>
+                                    <View style={[styles.confidenceDot, { backgroundColor: getConfidenceColor(selectedStop.geocode_confidence) }]} />
+                                    <Text style={styles.confidenceText}>{selectedStop.geocode_confidence} confidence</Text>
+                                </View>
+                            </View>
+
+                            {selectedStop.consignee_mobile && (
+                                <View style={styles.modalSection}>
+                                    <View style={styles.modalRow}>
+                                        <Ionicons name="call" size={18} color={colors.primary} />
+                                        <Text style={styles.modalLabel}>Mobile</Text>
+                                    </View>
+                                    <TouchableOpacity onPress={() => handleCallPhone(selectedStop.consignee_mobile)}>
+                                        <Text style={[styles.modalValue, styles.phoneLink]}>{selectedStop.consignee_mobile}</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+
+                            <View style={styles.modalSection}>
+                                <View style={styles.modalRow}>
+                                    <Ionicons name="navigate" size={18} color={colors.primary} />
+                                    <Text style={styles.modalLabel}>Route Info</Text>
+                                </View>
+                                <Text style={styles.modalValue}>
+                                    {selectedStop.distance_from_prev_km} km from previous stop
+                                </Text>
+                                <Text style={styles.modalValueSecondary}>
+                                    ~{selectedStop.duration_from_prev_min} min drive
+                                </Text>
+                            </View>
+
+                            <View style={styles.modalStats}>
+                                <View style={styles.modalStatItem}>
+                                    <Ionicons name="cube-outline" size={20} color={colors.primary} />
+                                    <Text style={styles.modalStatValue}>{selectedStop.total_pieces}</Text>
+                                    <Text style={styles.modalStatLabel}>Pieces</Text>
+                                </View>
+                                <View style={styles.modalStatDivider} />
+                                <View style={styles.modalStatItem}>
+                                    <Ionicons name="barbell-outline" size={20} color={colors.primary} />
+                                    <Text style={styles.modalStatValue}>{parseFloat(selectedStop.total_weight || '0').toFixed(1)}</Text>
+                                    <Text style={styles.modalStatLabel}>Kg</Text>
+                                </View>
+                                {selectedStop.service_type && (
+                                    <>
+                                        <View style={styles.modalStatDivider} />
+                                        <View style={styles.modalStatItem}>
+                                            <Ionicons name="flash-outline" size={20} color={colors.primary} />
+                                            <Text style={styles.modalStatValue}>{selectedStop.service_type}</Text>
+                                            <Text style={styles.modalStatLabel}>Service</Text>
+                                        </View>
+                                    </>
+                                )}
+                            </View>
+                        </ScrollView>
 
                         <TouchableOpacity
                             style={styles.navigateButton}
@@ -337,12 +355,8 @@ export default function RouteMapView({
                 showsMyLocationButton={false}
                 showsCompass={true}
                 showsScale={true}
-                initialRegion={{
-                    latitude: currentLocation?.latitude || 35.9375,
-                    longitude: currentLocation?.longitude || 14.3754,
-                    latitudeDelta: 0.1,
-                    longitudeDelta: 0.1,
-                }}
+                onMapReady={handleMapReady}
+                initialRegion={MALTA_REGION}
             >
                 {routeCoordinates.length > 1 && (
                     <Polyline
@@ -352,30 +366,35 @@ export default function RouteMapView({
                     />
                 )}
 
-                {markers.map((marker, index) => (
+                <Marker
+                    coordinate={WAREHOUSE}
+                    title="Miles Express Warehouse"
+                    description="Start / End Point"
+                >
+                    <View style={styles.warehouseMarker}>
+                        <Ionicons name="star" size={16} color={colors.background} />
+                    </View>
+                </Marker>
+
+                {validStops.map((stop) => (
                     <Marker
-                        key={`marker-${marker.booking.miles_ref}-${index}`}
-                        coordinate={marker.coordinate}
-                        onPress={() => handleMarkerPress(marker)}
-                        tracksViewChanges={false}
+                        key={`marker-${stop.miles_ref}-${stop.stop_number}`}
+                        coordinate={{ latitude: stop.lat, longitude: stop.lng }}
+                        onPress={() => handleMarkerPress(stop)}
                     >
                         <View style={styles.markerContainer}>
                             <View style={styles.markerBubble}>
-                                <Text style={styles.markerText}>{marker.sequenceNumber}</Text>
+                                <Text style={styles.markerText}>{stop.stop_number}</Text>
                             </View>
                             <View style={styles.markerArrow} />
                         </View>
                     </Marker>
                 ))}
 
-                {currentLocation && (
+                {currentLocation && currentLocation.latitude > 35 && currentLocation.latitude < 37 && (
                     <Marker
-                        key="current-location"
-                        coordinate={{
-                            latitude: currentLocation.latitude,
-                            longitude: currentLocation.longitude,
-                        }}
-                        tracksViewChanges={false}
+                        coordinate={currentLocation}
+                        title="Your Location"
                     >
                         <View style={styles.currentLocationMarker}>
                             <View style={styles.currentLocationInner} />
@@ -390,7 +409,7 @@ export default function RouteMapView({
                 </TouchableOpacity>
                 <View style={styles.topBarInfo}>
                     <Text style={styles.topBarTitle}>Optimized Route</Text>
-                    <Text style={styles.topBarSubtitle}>{markers.length} stops</Text>
+                    <Text style={styles.topBarSubtitle}>{staffName} • Departure: {departureTime}</Text>
                 </View>
                 <TouchableOpacity style={styles.fitButton} onPress={fitMapToMarkers}>
                     <Ionicons name="scan-outline" size={24} color={colors.text} />
@@ -405,12 +424,14 @@ export default function RouteMapView({
                     <Text style={styles.legendText}>Delivery Stop</Text>
                 </View>
                 <View style={styles.legendItem}>
-                    <View style={styles.legendCurrentLocation} />
-                    <Text style={styles.legendText}>Your Location</Text>
+                    <View style={styles.legendWarehouse}>
+                        <Ionicons name="star" size={10} color={colors.background} />
+                    </View>
+                    <Text style={styles.legendText}>Warehouse</Text>
                 </View>
                 <View style={styles.legendItem}>
-                    <View style={styles.legendRoute} />
-                    <Text style={styles.legendText}>Route</Text>
+                    <View style={styles.legendCurrentLocation} />
+                    <Text style={styles.legendText}>Your Location</Text>
                 </View>
             </View>
 
@@ -419,22 +440,26 @@ export default function RouteMapView({
                     <View style={styles.bottomBarStats}>
                         <View style={styles.bottomBarStatItem}>
                             <Ionicons name="location" size={20} color={colors.primary} />
-                            <Text style={styles.bottomBarStatValue}>{markers.length}</Text>
+                            <Text style={styles.bottomBarStatValue}>{validStops.length}</Text>
                             <Text style={styles.bottomBarStatLabel}>Stops</Text>
                         </View>
                         <View style={styles.bottomBarDivider} />
                         <View style={styles.bottomBarStatItem}>
-                            <Ionicons name="cube" size={20} color={colors.primary} />
-                            <Text style={styles.bottomBarStatValue}>
-                                {bookings.reduce((sum, b) => sum + parseInt(b.total_pieces || '0'), 0)}
-                            </Text>
-                            <Text style={styles.bottomBarStatLabel}>Pieces</Text>
+                            <Ionicons name="navigate" size={20} color={colors.primary} />
+                            <Text style={styles.bottomBarStatValue}>{totalDistance.toFixed(1)}</Text>
+                            <Text style={styles.bottomBarStatLabel}>km</Text>
+                        </View>
+                        <View style={styles.bottomBarDivider} />
+                        <View style={styles.bottomBarStatItem}>
+                            <Ionicons name="time" size={20} color={colors.primary} />
+                            <Text style={styles.bottomBarStatValue}>{formatDuration(totalDuration)}</Text>
+                            <Text style={styles.bottomBarStatLabel}>drive</Text>
                         </View>
                     </View>
-                    {markers.length > 0 && (
+                    {validStops.length > 0 && (
                         <TouchableOpacity
                             style={styles.startNavigationButton}
-                            onPress={() => openNavigationApp(markers[0])}
+                            onPress={() => openNavigationApp(validStops[0])}
                         >
                             <Ionicons name="navigate" size={20} color={colors.background} />
                             <Text style={styles.startNavigationText}>Start Navigation</Text>
@@ -533,6 +558,15 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: '700',
     },
+    legendWarehouse: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: colors.success,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: layouts.spacing.xs,
+    },
     legendCurrentLocation: {
         width: 14,
         height: 14,
@@ -542,13 +576,6 @@ const styles = StyleSheet.create({
         borderColor: colors.background,
         marginRight: layouts.spacing.xs,
         marginLeft: 3,
-    },
-    legendRoute: {
-        width: 20,
-        height: 4,
-        backgroundColor: colors.primary,
-        borderRadius: 2,
-        marginRight: layouts.spacing.xs,
     },
     legendText: {
         fontSize: 11,
@@ -578,7 +605,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'center',
-        gap: layouts.spacing.xl,
+        gap: layouts.spacing.lg,
     },
     bottomBarStatItem: {
         flexDirection: 'row',
@@ -612,6 +639,16 @@ const styles = StyleSheet.create({
         color: colors.background,
         fontSize: 16,
         fontWeight: '700',
+    },
+    warehouseMarker: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: colors.success,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 3,
+        borderColor: colors.background,
     },
     markerContainer: {
         alignItems: 'center',
@@ -707,9 +744,10 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: colors.text,
     },
-    modalHawb: {
-        fontSize: 12,
-        color: colors.textLight,
+    modalEta: {
+        fontSize: 14,
+        color: colors.primary,
+        fontWeight: '600',
         marginTop: 2,
     },
     modalCloseButton: {
@@ -724,6 +762,9 @@ const styles = StyleSheet.create({
         height: 1,
         backgroundColor: colors.gray200,
         marginBottom: layouts.spacing.md,
+    },
+    modalScrollContent: {
+        maxHeight: 300,
     },
     modalSection: {
         marginBottom: layouts.spacing.md,
@@ -749,6 +790,26 @@ const styles = StyleSheet.create({
         color: colors.textLight,
         marginLeft: 26,
         marginTop: 2,
+    },
+    phoneLink: {
+        color: colors.primary,
+        textDecorationLine: 'underline',
+    },
+    confidenceRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginLeft: 26,
+        marginTop: 4,
+        gap: 6,
+    },
+    confidenceDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+    },
+    confidenceText: {
+        fontSize: 12,
+        color: colors.textLight,
     },
     modalStats: {
         flexDirection: 'row',

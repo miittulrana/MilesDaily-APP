@@ -1,62 +1,52 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, Switch, RefreshControl } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
 import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import LoadingIndicator from '../../../components/LoadingIndicator';
 import BookingCard from '../../../components/runsheets/BookingCard';
 import AcknowledgementModal from '../../../components/runsheets/AcknowledgementModal';
-import { fetchRunsheetDetail, fetchBookingStatuses } from '../../../lib/runsheetService';
-import { optimizeDeliveryRoute } from '../../../lib/routeOptimization';
-import { AssignedRunsheet, RunsheetBooking, BookingStatusMap } from '../../../utils/runsheetTypes';
+import { fetchRunsheetDetail, fetchBookingStatuses, fetchRouteOptimization } from '../../../lib/runsheetService';
+import { AssignedRunsheet, RunsheetBooking, BookingStatusMap, RouteOptimizationData, OptimizedStopData } from '../../../utils/runsheetTypes';
 import { isBizhandleLoggedIn } from '../../../lib/bizhandleAuth';
 import { checkAcknowledgementExists, saveAcknowledgement } from '../../../lib/runsheetAcknowledgement';
 import { supabase } from '../../../lib/supabase';
-
-const geocodeCacheRef: { current: Map<string, { lat: number; lng: number }> } = { current: new Map() };
 
 export default function RunsheetDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
     const [runsheet, setRunsheet] = useState<AssignedRunsheet | null>(null);
-    const [filteredBookings, setFilteredBookings] = useState<RunsheetBooking[]>([]);
-    const [originalBookings, setOriginalBookings] = useState<RunsheetBooking[]>([]);
+    const [routeOptimization, setRouteOptimization] = useState<RouteOptimizationData | null>(null);
+    const [displayBookings, setDisplayBookings] = useState<RunsheetBooking[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [sortBy, setSortBy] = useState<'city' | 'company' | 'miles_ref'>('city');
-    const [isOptimized, setIsOptimized] = useState(false);
-    const [isOptimizing, setIsOptimizing] = useState(false);
+    const [sortBy, setSortBy] = useState<'sequence' | 'city' | 'company' | 'miles_ref'>('sequence');
     const [showAcknowledgementModal, setShowAcknowledgementModal] = useState(false);
     const [isAcknowledged, setIsAcknowledged] = useState(false);
     const [checkingAcknowledgement, setCheckingAcknowledgement] = useState(true);
     const [bookingStatuses, setBookingStatuses] = useState<BookingStatusMap>({});
     const [loadingStatuses, setLoadingStatuses] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
-    const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
 
     useEffect(() => {
         loadRunsheetDetail();
     }, [id]);
 
     useEffect(() => {
-        if (runsheet && !isOptimized) {
-            filterAndSortBookings();
+        if (runsheet) {
+            prepareDisplayBookings();
         }
-    }, [runsheet, searchQuery, sortBy, isOptimized]);
+    }, [runsheet, routeOptimization, searchQuery, sortBy]);
 
     const loadBookingStatuses = async (runsheetData: AssignedRunsheet) => {
         try {
             setLoadingStatuses(true);
-
             const bookings = runsheetData.runsheet.csv_data;
-
             if (bookings.length === 0) {
                 return;
             }
-
             const originalStaffId = runsheetData.runsheet.staff_id;
             const statuses = await fetchBookingStatuses(bookings, originalStaffId);
             setBookingStatuses(statuses);
@@ -73,7 +63,20 @@ export default function RunsheetDetailScreen() {
             setError(null);
             const data = await fetchRunsheetDetail(id);
             setRunsheet(data);
-            setOriginalBookings([...data.runsheet.csv_data]);
+
+            console.log('[RunsheetDetail] is_optimized:', data.is_optimized);
+            console.log('[RunsheetDetail] optimization_id:', data.optimization_id);
+
+            // KEY FIX: Use optimization_id (not runsheet_id) to fetch from route_optimizations
+            if (data.is_optimized && data.optimization_id) {
+                console.log('[RunsheetDetail] Fetching optimization data...');
+                const optimization = await fetchRouteOptimization(data.optimization_id);
+                console.log('[RunsheetDetail] Optimization result:', optimization ? 'Found' : 'Not found');
+                if (optimization) {
+                    console.log('[RunsheetDetail] Optimized stops count:', optimization.optimized_stops?.length || 0);
+                }
+                setRouteOptimization(optimization);
+            }
 
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
@@ -99,10 +102,29 @@ export default function RunsheetDetailScreen() {
         setRefreshing(false);
     };
 
-    const filterAndSortBookings = () => {
+    const prepareDisplayBookings = () => {
         if (!runsheet) return;
 
-        let bookings = [...originalBookings];
+        let bookings: RunsheetBooking[] = [];
+
+        if (runsheet.is_optimized && routeOptimization && routeOptimization.optimized_stops && routeOptimization.optimized_stops.length > 0) {
+            bookings = routeOptimization.optimized_stops.map((stop: OptimizedStopData) => ({
+                miles_ref: stop.miles_ref,
+                hawb: stop.hawb || '',
+                consignee_company: stop.consignee_company,
+                consignee_name: stop.consignee_name,
+                consignee_address: stop.cleaned_address || stop.consignee_address,
+                consignee_city: stop.consignee_city,
+                consignee_postcode: stop.consignee_postcode,
+                consignee_mobile: stop.consignee_mobile,
+                service_type: stop.service_type,
+                driver_name: runsheet.runsheet.staff_name,
+                total_pieces: stop.total_pieces,
+                total_weight: stop.total_weight,
+            }));
+        } else {
+            bookings = [...runsheet.runsheet.csv_data];
+        }
 
         if (searchQuery) {
             const query = searchQuery.toLowerCase();
@@ -116,137 +138,39 @@ export default function RunsheetDetailScreen() {
             );
         }
 
-        bookings.sort((a, b) => {
-            if (sortBy === 'city') {
-                return a.consignee_city.localeCompare(b.consignee_city);
-            } else if (sortBy === 'company') {
-                return a.consignee_company.localeCompare(b.consignee_company);
-            } else {
-                return a.miles_ref.localeCompare(b.miles_ref);
-            }
-        });
-
-        setFilteredBookings(bookings);
-    };
-
-    const handleOptimizeToggle = async (value: boolean) => {
-        if (value) {
-            await optimizeRoute();
-        } else {
-            setIsOptimized(false);
-            geocodeCacheRef.current.clear();
-            filterAndSortBookings();
-        }
-    };
-
-    const buildFullAddress = (booking: RunsheetBooking): string => {
-        const parts = [
-            booking.consignee_address,
-            booking.consignee_city,
-            booking.consignee_postcode,
-            'Malta',
-        ].filter(Boolean);
-        return parts.join(', ');
-    };
-
-    const optimizeRoute = async () => {
-        try {
-            setIsOptimizing(true);
-
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') {
-                Alert.alert(
-                    'Permission Required',
-                    'Location permission is needed to optimize your route.'
-                );
-                return;
-            }
-
-            const location = await Location.getCurrentPositionAsync({
-                accuracy: Location.Accuracy.Balanced,
-            });
-
-            const startLocation = {
-                lat: location.coords.latitude,
-                lng: location.coords.longitude,
-            };
-
-            setCurrentLocation(startLocation);
-
-            let bookingsToOptimize = [...originalBookings];
-            if (searchQuery) {
-                const query = searchQuery.toLowerCase();
-                bookingsToOptimize = bookingsToOptimize.filter(
-                    (b) =>
-                        b.miles_ref.toLowerCase().includes(query) ||
-                        b.hawb.toLowerCase().includes(query) ||
-                        b.consignee_company.toLowerCase().includes(query) ||
-                        b.consignee_name.toLowerCase().includes(query) ||
-                        b.consignee_city.toLowerCase().includes(query)
-                );
-            }
-
-            const optimizedResult = await optimizeDeliveryRoute(
-                bookingsToOptimize,
-                startLocation
-            );
-
-            optimizedResult.waypoints.forEach((wp) => {
-                if (wp.location && wp.address) {
-                    geocodeCacheRef.current.set(wp.address, wp.location);
+        if (!runsheet.is_optimized || sortBy !== 'sequence') {
+            bookings.sort((a, b) => {
+                if (sortBy === 'city') {
+                    return a.consignee_city.localeCompare(b.consignee_city);
+                } else if (sortBy === 'company') {
+                    return a.consignee_company.localeCompare(b.consignee_company);
+                } else if (sortBy === 'miles_ref') {
+                    return a.miles_ref.localeCompare(b.miles_ref);
                 }
+                return 0;
             });
-
-            optimizedResult.optimizedBookings.forEach((booking) => {
-                const address = buildFullAddress(booking);
-                const waypoint = optimizedResult.waypoints.find(wp => wp.address === address);
-                if (waypoint && waypoint.location) {
-                    geocodeCacheRef.current.set(address, waypoint.location);
-                }
-            });
-
-            setFilteredBookings(optimizedResult.optimizedBookings);
-            setIsOptimized(true);
-        } catch (err: any) {
-            console.error('Optimization error:', err);
-            Alert.alert(
-                'Optimization Failed',
-                err.message || 'Failed to optimize route. Please try again.'
-            );
-            setIsOptimized(false);
-        } finally {
-            setIsOptimizing(false);
         }
+
+        setDisplayBookings(bookings);
     };
 
     const handleViewMap = () => {
-        if (!isOptimized || filteredBookings.length === 0) {
-            Alert.alert('Route Not Optimized', 'Please optimize the route first to view the map.');
+        if (!runsheet || !runsheet.is_optimized || !routeOptimization || !routeOptimization.optimized_stops) {
+            Alert.alert('Not Available', 'Route map is only available for optimized runsheets.');
             return;
         }
 
-        const geocodedData: { [key: string]: { lat: number; lng: number } } = {};
-        geocodeCacheRef.current.forEach((value, key) => {
-            geocodedData[key] = value;
-        });
-
-        filteredBookings.forEach((booking) => {
-            const address = buildFullAddress(booking);
-            if (!geocodedData[address]) {
-                const waypoint = Array.from(geocodeCacheRef.current.entries()).find(([key]) =>
-                    key.includes(booking.consignee_address) || key.includes(booking.consignee_city)
-                );
-                if (waypoint) {
-                    geocodedData[address] = waypoint[1];
-                }
-            }
-        });
+        console.log('[handleViewMap] Passing', routeOptimization.optimized_stops.length, 'stops to map');
 
         router.push({
             pathname: '/(dashboard)/runsheets/route-map',
             params: {
-                bookings: JSON.stringify(filteredBookings),
-                geocodedLocations: JSON.stringify(geocodedData),
+                runsheetId: id,
+                optimizedData: JSON.stringify(routeOptimization.optimized_stops),
+                staffName: runsheet.runsheet.staff_name,
+                totalDistance: routeOptimization.total_distance_km.toString(),
+                totalDuration: routeOptimization.total_duration_minutes.toString(),
+                departureTime: routeOptimization.departure_time || '07:30',
             },
         });
     };
@@ -322,13 +246,24 @@ export default function RunsheetDetailScreen() {
         }
     };
 
+    const getSequenceNumber = (booking: RunsheetBooking, index: number): number | undefined => {
+        if (!runsheet?.is_optimized || !routeOptimization?.optimized_stops) {
+            return undefined;
+        }
+        const optimizedStop = routeOptimization.optimized_stops.find(
+            (stop: OptimizedStopData) => stop.miles_ref === booking.miles_ref
+        );
+        return optimizedStop?.stop_number;
+    };
+
     const renderBooking = ({ item, index }: { item: RunsheetBooking; index: number }) => {
         const bookingStatus = bookingStatuses[item.miles_ref];
+        const sequenceNumber = getSequenceNumber(item, index);
 
         return (
             <BookingCard
                 booking={item}
-                sequenceNumber={isOptimized ? index + 1 : undefined}
+                sequenceNumber={sequenceNumber}
                 onPress={() => handleBookingPress(item)}
                 currentStatus={bookingStatus}
             />
@@ -352,39 +287,29 @@ export default function RunsheetDetailScreen() {
         );
     }
 
+    const hasOptimizedMap = runsheet.is_optimized && routeOptimization && routeOptimization.optimized_stops && routeOptimization.optimized_stops.length > 0;
+
     return (
         <View style={styles.container}>
             <View style={styles.compactHeader}>
-                <View style={styles.optimizeRow}>
-                    <Ionicons
-                        name="navigate-circle"
-                        size={20}
-                        color={isOptimized ? colors.success : colors.gray400}
-                    />
-                    <Text style={styles.optimizeLabel}>Route Optimize</Text>
-                    <View style={styles.switchContainer}>
-                        {isOptimizing ? (
-                            <ActivityIndicator size="small" color={colors.primary} />
-                        ) : (
-                            <Switch
-                                value={isOptimized}
-                                onValueChange={handleOptimizeToggle}
-                                trackColor={{ false: colors.gray300, true: colors.success + '80' }}
-                                thumbColor={isOptimized ? colors.success : colors.gray400}
-                                ios_backgroundColor={colors.gray300}
-                            />
-                        )}
+                {runsheet.is_optimized && routeOptimization && (
+                    <View style={styles.optimizedBanner}>
+                        <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+                        <Text style={styles.optimizedText}>Route Optimized</Text>
+                        <Text style={styles.optimizedCount}>
+                            {routeOptimization.optimized_stops?.length || 0} stops • {routeOptimization.total_distance_km}km • {Math.round(routeOptimization.total_duration_minutes)}min
+                        </Text>
                     </View>
-                </View>
+                )}
 
-                {isOptimized && (
+                {hasOptimizedMap && (
                     <TouchableOpacity
                         style={styles.viewMapButton}
                         onPress={handleViewMap}
                         activeOpacity={0.8}
                     >
                         <Ionicons name="map" size={20} color={colors.background} />
-                        <Text style={styles.viewMapButtonText}>View Map</Text>
+                        <Text style={styles.viewMapButtonText}>View Route Map</Text>
                     </TouchableOpacity>
                 )}
             </View>
@@ -398,7 +323,6 @@ export default function RunsheetDetailScreen() {
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                         placeholderTextColor={colors.gray400}
-                        editable={!isOptimized}
                     />
                     {searchQuery.length > 0 && (
                         <TouchableOpacity onPress={() => setSearchQuery('')}>
@@ -407,34 +331,42 @@ export default function RunsheetDetailScreen() {
                     )}
                 </View>
 
-                {!isOptimized && (
-                    <View style={styles.sortContainer}>
+                <View style={styles.sortContainer}>
+                    {runsheet.is_optimized && (
                         <TouchableOpacity
-                            style={[styles.sortButton, sortBy === 'city' && styles.sortButtonActive]}
-                            onPress={() => setSortBy('city')}
+                            style={[styles.sortButton, sortBy === 'sequence' && styles.sortButtonActive]}
+                            onPress={() => setSortBy('sequence')}
                         >
-                            <Text style={[styles.sortButtonText, sortBy === 'city' && styles.sortButtonTextActive]}>
-                                City
+                            <Text style={[styles.sortButtonText, sortBy === 'sequence' && styles.sortButtonTextActive]}>
+                                Route
                             </Text>
                         </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.sortButton, sortBy === 'company' && styles.sortButtonActive]}
-                            onPress={() => setSortBy('company')}
-                        >
-                            <Text style={[styles.sortButtonText, sortBy === 'company' && styles.sortButtonTextActive]}>
-                                Company
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.sortButton, sortBy === 'miles_ref' && styles.sortButtonActive]}
-                            onPress={() => setSortBy('miles_ref')}
-                        >
-                            <Text style={[styles.sortButtonText, sortBy === 'miles_ref' && styles.sortButtonTextActive]}>
-                                Ref
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                )}
+                    )}
+                    <TouchableOpacity
+                        style={[styles.sortButton, sortBy === 'city' && styles.sortButtonActive]}
+                        onPress={() => setSortBy('city')}
+                    >
+                        <Text style={[styles.sortButtonText, sortBy === 'city' && styles.sortButtonTextActive]}>
+                            City
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.sortButton, sortBy === 'company' && styles.sortButtonActive]}
+                        onPress={() => setSortBy('company')}
+                    >
+                        <Text style={[styles.sortButtonText, sortBy === 'company' && styles.sortButtonTextActive]}>
+                            Company
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.sortButton, sortBy === 'miles_ref' && styles.sortButtonActive]}
+                        onPress={() => setSortBy('miles_ref')}
+                    >
+                        <Text style={[styles.sortButtonText, sortBy === 'miles_ref' && styles.sortButtonTextActive]}>
+                            Ref
+                        </Text>
+                    </TouchableOpacity>
+                </View>
             </View>
 
             {loadingStatuses && (
@@ -445,7 +377,7 @@ export default function RunsheetDetailScreen() {
             )}
 
             <FlatList
-                data={filteredBookings}
+                data={displayBookings}
                 renderItem={renderBooking}
                 keyExtractor={(item, index) => `${item.miles_ref}-${index}`}
                 contentContainerStyle={styles.listContent}
@@ -489,19 +421,26 @@ const styles = StyleSheet.create({
         borderBottomColor: colors.gray200,
         gap: layouts.spacing.sm,
     },
-    optimizeRow: {
+    optimizedBanner: {
         flexDirection: 'row',
         alignItems: 'center',
+        backgroundColor: colors.success + '15',
+        paddingVertical: layouts.spacing.sm,
+        paddingHorizontal: layouts.spacing.md,
+        borderRadius: layouts.borderRadius.md,
         gap: layouts.spacing.sm,
     },
-    optimizeLabel: {
-        flex: 1,
+    optimizedText: {
         fontSize: 14,
         fontWeight: '600',
-        color: colors.text,
+        color: colors.success,
     },
-    switchContainer: {
-        marginLeft: layouts.spacing.sm,
+    optimizedCount: {
+        flex: 1,
+        fontSize: 12,
+        color: colors.success,
+        fontWeight: '500',
+        textAlign: 'right',
     },
     viewMapButton: {
         flexDirection: 'row',

@@ -5,16 +5,19 @@ import * as Location from 'expo-location';
 import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import RouteMapView from '../../../components/runsheets/RouteMapView';
-import { RunsheetBooking } from '../../../utils/runsheetTypes';
+import { OptimizedStopData } from '../../../utils/runsheetTypes';
 
 export default function RouteMapScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [bookings, setBookings] = useState<RunsheetBooking[]>([]);
+    const [optimizedStops, setOptimizedStops] = useState<OptimizedStopData[]>([]);
     const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-    const [geocodedLocations, setGeocodedLocations] = useState<Map<string, { lat: number; lng: number }>>(new Map());
+    const [staffName, setStaffName] = useState<string>('');
+    const [totalDistance, setTotalDistance] = useState<number>(0);
+    const [totalDuration, setTotalDuration] = useState<number>(0);
+    const [departureTime, setDepartureTime] = useState<string>('07:30');
 
     useEffect(() => {
         initializeMap();
@@ -25,16 +28,20 @@ export default function RouteMapScreen() {
             setLoading(true);
             setError(null);
 
-            const bookingsData = params.bookings ? JSON.parse(params.bookings as string) : [];
-            const geocodedData = params.geocodedLocations ? JSON.parse(params.geocodedLocations as string) : {};
+            const optimizedData = params.optimizedData ? JSON.parse(params.optimizedData as string) : [];
+            const name = params.staffName as string || '';
+            const distance = params.totalDistance ? parseFloat(params.totalDistance as string) : 0;
+            const duration = params.totalDuration ? parseFloat(params.totalDuration as string) : 0;
+            const departure = params.departureTime as string || '07:30';
 
-            setBookings(bookingsData);
+            console.log('Received optimized data:', optimizedData.length, 'stops');
+            console.log('First stop:', optimizedData[0]);
 
-            const geoMap = new Map<string, { lat: number; lng: number }>();
-            Object.entries(geocodedData).forEach(([key, value]) => {
-                geoMap.set(key, value as { lat: number; lng: number });
-            });
-            setGeocodedLocations(geoMap);
+            setOptimizedStops(optimizedData);
+            setStaffName(name);
+            setTotalDistance(distance);
+            setTotalDuration(duration);
+            setDepartureTime(departure);
 
             const { status } = await Location.requestForegroundPermissionsAsync();
             if (status === 'granted') {
@@ -63,7 +70,7 @@ export default function RouteMapScreen() {
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={styles.loadingText}>Loading map...</Text>
+                <Text style={styles.loadingText}>Loading optimized route...</Text>
             </View>
         );
     }
@@ -76,12 +83,23 @@ export default function RouteMapScreen() {
         );
     }
 
+    if (optimizedStops.length === 0) {
+        return (
+            <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>No optimized route data available</Text>
+            </View>
+        );
+    }
+
     return (
         <View style={styles.container}>
             <RouteMapView
-                bookings={bookings}
+                optimizedStops={optimizedStops}
                 currentLocation={currentLocation}
-                geocodedLocations={geocodedLocations}
+                staffName={staffName}
+                totalDistance={totalDistance}
+                totalDuration={totalDuration}
+                departureTime={departureTime}
                 onClose={handleClose}
             />
         </View>
