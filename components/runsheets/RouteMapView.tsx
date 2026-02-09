@@ -103,7 +103,6 @@ export default function RouteMapView({
             if (canOpen) {
                 await Linking.openURL(wazeUrl);
             } else {
-                // Fallback to web URL if Waze app is not installed
                 Alert.alert(
                     'Waze Not Installed',
                     'Would you like to open Waze in your browser instead?',
@@ -186,6 +185,13 @@ export default function RouteMapView({
                             </View>
                             <View style={styles.modalHeaderText}>
                                 <Text style={styles.modalMilesRef}>{selectedStop.miles_ref}</Text>
+                                {selectedStop.hawb && selectedStop.hawb.trim() !== '' && (
+                                    <View style={styles.modalHawbContainer}>
+                                        <Ionicons name="barcode-outline" size={12} color={colors.info} />
+                                        <Text style={styles.modalHawbLabel}>HAWB:</Text>
+                                        <Text style={styles.modalHawbValue}>{selectedStop.hawb}</Text>
+                                    </View>
+                                )}
                                 <Text style={styles.modalEta}>ETA: {selectedStop.eta}</Text>
                             </View>
                             <TouchableOpacity
@@ -656,7 +662,7 @@ const styles = StyleSheet.create({
     },
     modalHeader: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         marginBottom: layouts.spacing.md,
     },
     modalSequenceBadge: {
@@ -681,11 +687,32 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: colors.text,
     },
+    modalHawbContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.info + '15',
+        paddingVertical: 4,
+        paddingHorizontal: layouts.spacing.sm,
+        borderRadius: layouts.borderRadius.sm,
+        gap: 4,
+        alignSelf: 'flex-start',
+        marginTop: 4,
+    },
+    modalHawbLabel: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: colors.info,
+    },
+    modalHawbValue: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: colors.info,
+    },
     modalEta: {
         fontSize: 14,
         color: colors.primary,
         fontWeight: '600',
-        marginTop: 2,
+        marginTop: 4,
     },
     modalCloseButton: {
         width: 40,

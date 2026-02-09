@@ -1,7 +1,7 @@
 export interface OptimizedStopData {
     stop_number: number;
     miles_ref: string;
-    hawb?: string;
+    hawb: string;
     consignee_company: string;
     consignee_name: string;
     consignee_address: string;
@@ -23,6 +23,7 @@ export interface OptimizedStopData {
 
 export interface FailedStopData {
     miles_ref: string;
+    hawb: string;
     consignee_company: string;
     consignee_name: string;
     consignee_address: string;

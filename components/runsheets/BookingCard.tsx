@@ -29,8 +29,12 @@ export default function BookingCard({ booking, sequenceNumber, onPress, currentS
                     <Ionicons name="document-text" size={16} color={colors.primary} />
                     <Text style={styles.milesRef}>{booking.miles_ref}</Text>
                 </View>
-                {booking.hawb && (
-                    <Text style={styles.hawb}>HAWB: {booking.hawb}</Text>
+                {booking.hawb && booking.hawb.trim() !== '' && (
+                    <View style={styles.hawbContainer}>
+                        <Ionicons name="barcode-outline" size={14} color={colors.info} />
+                        <Text style={styles.hawbLabel}>HAWB:</Text>
+                        <Text style={styles.hawbValue}>{booking.hawb}</Text>
+                    </View>
                 )}
             </View>
 
@@ -162,22 +166,37 @@ const styles = StyleSheet.create({
         paddingBottom: layouts.spacing.sm,
         borderBottomWidth: 1,
         borderBottomColor: colors.gray200,
+        gap: layouts.spacing.xs,
     },
     refContainer: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: layouts.spacing.xs,
-        marginBottom: layouts.spacing.xs,
     },
     milesRef: {
         fontSize: 16,
         fontWeight: '700',
         color: colors.text,
     },
-    hawb: {
+    hawbContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.info + '15',
+        paddingVertical: layouts.spacing.xs,
+        paddingHorizontal: layouts.spacing.sm,
+        borderRadius: layouts.borderRadius.sm,
+        gap: layouts.spacing.xs,
+        alignSelf: 'flex-start',
+    },
+    hawbLabel: {
         fontSize: 12,
-        color: colors.textLight,
-        fontStyle: 'italic',
+        fontWeight: '600',
+        color: colors.info,
+    },
+    hawbValue: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: colors.info,
     },
     statusBanner: {
         flexDirection: 'row',
