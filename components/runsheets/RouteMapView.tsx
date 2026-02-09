@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking, Alert, ActionSheetIOS, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking, Alert, Modal, ScrollView } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/Colors';
@@ -94,75 +94,28 @@ export default function RouteMapView({
         setShowDetailModal(true);
     };
 
-    const openNavigationApp = (stop: OptimizedStopData) => {
-        const destination = `${stop.lat},${stop.lng}`;
-
-        const googleMapsUrl = Platform.select({
-            ios: `comgooglemaps://?daddr=${destination}&directionsmode=driving`,
-            android: `google.navigation:q=${destination}`,
-        });
-
-        const appleMapsUrl = `maps://?daddr=${destination}&dirflg=d`;
+    const openWazeNavigation = async (stop: OptimizedStopData) => {
         const wazeUrl = `waze://?ll=${stop.lat},${stop.lng}&navigate=yes`;
-        const googleMapsWebUrl = `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
+        const wazeWebUrl = `https://waze.com/ul?ll=${stop.lat},${stop.lng}&navigate=yes`;
 
-        if (Platform.OS === 'ios') {
-            ActionSheetIOS.showActionSheetWithOptions(
-                {
-                    options: ['Cancel', 'Waze', 'Google Maps', 'Apple Maps'],
-                    cancelButtonIndex: 0,
-                    title: 'Choose Navigation App',
-                },
-                async (buttonIndex) => {
-                    if (buttonIndex === 1) {
-                        const canOpen = await Linking.canOpenURL(wazeUrl);
-                        if (canOpen) {
-                            Linking.openURL(wazeUrl);
-                        } else {
-                            Alert.alert('Waze Not Installed', 'Please install Waze to use this option.');
-                        }
-                    } else if (buttonIndex === 2) {
-                        const canOpen = await Linking.canOpenURL(googleMapsUrl!);
-                        if (canOpen) {
-                            Linking.openURL(googleMapsUrl!);
-                        } else {
-                            Linking.openURL(googleMapsWebUrl);
-                        }
-                    } else if (buttonIndex === 3) {
-                        Linking.openURL(appleMapsUrl);
-                    }
-                }
-            );
-        } else {
-            Alert.alert(
-                'Choose Navigation App',
-                'Select your preferred navigation app',
-                [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                        text: 'Waze',
-                        onPress: async () => {
-                            const canOpen = await Linking.canOpenURL(wazeUrl);
-                            if (canOpen) {
-                                Linking.openURL(wazeUrl);
-                            } else {
-                                Alert.alert('Waze Not Installed', 'Please install Waze to use this option.');
-                            }
-                        },
-                    },
-                    {
-                        text: 'Google Maps',
-                        onPress: async () => {
-                            const canOpen = await Linking.canOpenURL(googleMapsUrl!);
-                            if (canOpen) {
-                                Linking.openURL(googleMapsUrl!);
-                            } else {
-                                Linking.openURL(googleMapsWebUrl);
-                            }
-                        },
-                    },
-                ]
-            );
+        try {
+            const canOpen = await Linking.canOpenURL(wazeUrl);
+            if (canOpen) {
+                await Linking.openURL(wazeUrl);
+            } else {
+                // Fallback to web URL if Waze app is not installed
+                Alert.alert(
+                    'Waze Not Installed',
+                    'Would you like to open Waze in your browser instead?',
+                    [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Open in Browser', onPress: () => Linking.openURL(wazeWebUrl) }
+                    ]
+                );
+            }
+        } catch (error) {
+            console.error('Error opening Waze:', error);
+            Alert.alert('Error', 'Failed to open Waze navigation.');
         }
     };
 
@@ -170,7 +123,7 @@ export default function RouteMapView({
         if (selectedStop) {
             setShowDetailModal(false);
             setTimeout(() => {
-                openNavigationApp(selectedStop);
+                openWazeNavigation(selectedStop);
             }, 300);
         }
     };
@@ -456,15 +409,7 @@ export default function RouteMapView({
                             <Text style={styles.bottomBarStatLabel}>drive</Text>
                         </View>
                     </View>
-                    {validStops.length > 0 && (
-                        <TouchableOpacity
-                            style={styles.startNavigationButton}
-                            onPress={() => openNavigationApp(validStops[0])}
-                        >
-                            <Ionicons name="navigate" size={20} color={colors.background} />
-                            <Text style={styles.startNavigationText}>Start Navigation</Text>
-                        </TouchableOpacity>
-                    )}
+                    <Text style={styles.bottomBarHint}>Tap any stop to navigate</Text>
                 </View>
             </View>
 
@@ -599,7 +544,7 @@ const styles = StyleSheet.create({
         elevation: 10,
     },
     bottomBarContent: {
-        gap: layouts.spacing.md,
+        gap: layouts.spacing.sm,
     },
     bottomBarStats: {
         flexDirection: 'row',
@@ -626,19 +571,11 @@ const styles = StyleSheet.create({
         height: 30,
         backgroundColor: colors.gray300,
     },
-    startNavigationButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.primary,
-        borderRadius: layouts.borderRadius.lg,
-        paddingVertical: layouts.spacing.md,
-        gap: layouts.spacing.sm,
-    },
-    startNavigationText: {
-        color: colors.background,
-        fontSize: 16,
-        fontWeight: '700',
+    bottomBarHint: {
+        fontSize: 12,
+        color: colors.textLight,
+        textAlign: 'center',
+        marginTop: layouts.spacing.xs,
     },
     warehouseMarker: {
         width: 32,
