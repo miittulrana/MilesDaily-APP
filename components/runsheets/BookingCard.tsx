@@ -1,20 +1,137 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
 import { RunsheetBooking, BookingStatus } from '../../utils/runsheetTypes';
+import { logBookingCall } from '../../lib/callLogService';
+import { supabase } from '../../lib/supabase';
 
 interface BookingCardProps {
     booking: RunsheetBooking;
     sequenceNumber?: number;
     onPress?: () => void;
     currentStatus?: BookingStatus;
+    lat?: number;
+    lng?: number;
 }
 
-export default function BookingCard({ booking, sequenceNumber, onPress, currentStatus }: BookingCardProps) {
+export default function BookingCard({ booking, sequenceNumber, onPress, currentStatus, lat, lng }: BookingCardProps) {
     const CardWrapper = onPress ? TouchableOpacity : View;
     const wrapperProps = onPress ? { onPress, activeOpacity: 0.7 } : {};
+
+    const buildAddressString = (): string => {
+        const parts = [];
+        if (booking.consignee_address) parts.push(booking.consignee_address);
+        if (booking.consignee_city) parts.push(booking.consignee_city);
+        if (booking.consignee_postcode) parts.push(booking.consignee_postcode);
+        parts.push('Malta');
+        return parts.join(', ');
+    };
+
+    const openGoogleMaps = async () => {
+        let url: string;
+        if (lat && lng && lat !== 0 && lng !== 0) {
+            url = `google.navigation:q=${lat},${lng}`;
+        } else {
+            const address = encodeURIComponent(buildAddressString());
+            url = `google.navigation:q=${address}`;
+        }
+
+        const webUrl = lat && lng && lat !== 0 && lng !== 0
+            ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`
+            : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(buildAddressString())}&travelmode=driving`;
+
+        try {
+            const canOpen = await Linking.canOpenURL(url);
+            if (canOpen) {
+                await Linking.openURL(url);
+            } else {
+                await Linking.openURL(webUrl);
+            }
+        } catch (error) {
+            try {
+                await Linking.openURL(webUrl);
+            } catch (webError) {
+                Alert.alert('Error', 'Failed to open Google Maps.');
+            }
+        }
+    };
+
+    const openWaze = async () => {
+        let wazeUrl: string;
+        let wazeWebUrl: string;
+
+        if (lat && lng && lat !== 0 && lng !== 0) {
+            wazeUrl = `waze://?ll=${lat},${lng}&navigate=yes`;
+            wazeWebUrl = `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`;
+        } else {
+            const address = encodeURIComponent(buildAddressString());
+            wazeUrl = `waze://?q=${address}&navigate=yes`;
+            wazeWebUrl = `https://waze.com/ul?q=${address}&navigate=yes`;
+        }
+
+        try {
+            const canOpen = await Linking.canOpenURL(wazeUrl);
+            if (canOpen) {
+                await Linking.openURL(wazeUrl);
+            } else {
+                Alert.alert(
+                    'Waze Not Installed',
+                    'Would you like to open Waze in your browser instead?',
+                    [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Open in Browser', onPress: () => Linking.openURL(wazeWebUrl) }
+                    ]
+                );
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Failed to open Waze.');
+        }
+    };
+
+    const handleMapPress = () => {
+        Alert.alert(
+            'Navigate with',
+            'Choose your preferred navigation app',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Waze', onPress: openWaze },
+                { text: 'Google Maps', onPress: openGoogleMaps }
+            ]
+        );
+    };
+
+    const handleCallPress = async () => {
+        const phoneNumber = booking.consignee_mobile;
+        if (!phoneNumber) {
+            Alert.alert('No Phone Number', 'This booking does not have a phone number.');
+            return;
+        }
+
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const driverName = user?.user_metadata?.first_name && user?.user_metadata?.last_name
+                ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
+                : user?.email || 'Unknown Driver';
+
+            await logBookingCall({
+                miles_ref: booking.miles_ref,
+                hawb: booking.hawb || null,
+                contact_name: booking.consignee_name || booking.consignee_company || 'Unknown',
+                mobile_number: phoneNumber,
+                driver_name: driverName
+            });
+
+            const cleanedNumber = phoneNumber.replace(/\s/g, '');
+            const phoneUrl = `tel:${cleanedNumber}`;
+            await Linking.openURL(phoneUrl);
+        } catch (error) {
+            const cleanedNumber = phoneNumber.replace(/\s/g, '');
+            const phoneUrl = `tel:${cleanedNumber}`;
+            await Linking.openURL(phoneUrl);
+        }
+    };
 
     return (
         <CardWrapper style={styles.container} {...wrapperProps}>
@@ -25,17 +142,37 @@ export default function BookingCard({ booking, sequenceNumber, onPress, currentS
             )}
 
             <View style={styles.header}>
-                <View style={styles.refContainer}>
-                    <Ionicons name="document-text" size={16} color={colors.primary} />
-                    <Text style={styles.milesRef}>{booking.miles_ref}</Text>
-                </View>
-                {booking.hawb && booking.hawb.trim() !== '' && (
-                    <View style={styles.hawbContainer}>
-                        <Ionicons name="barcode-outline" size={14} color={colors.info} />
-                        <Text style={styles.hawbLabel}>HAWB:</Text>
-                        <Text style={styles.hawbValue}>{booking.hawb}</Text>
+                <View style={styles.headerLeft}>
+                    <View style={styles.refContainer}>
+                        <Ionicons name="document-text" size={16} color={colors.primary} />
+                        <Text style={styles.milesRef}>{booking.miles_ref}</Text>
                     </View>
-                )}
+                    {booking.hawb && booking.hawb.trim() !== '' && (
+                        <View style={styles.hawbContainer}>
+                            <Ionicons name="barcode-outline" size={14} color={colors.info} />
+                            <Text style={styles.hawbLabel}>HAWB:</Text>
+                            <Text style={styles.hawbValue}>{booking.hawb}</Text>
+                        </View>
+                    )}
+                </View>
+                <View style={styles.headerActions}>
+                    <TouchableOpacity
+                        style={styles.actionIconButton}
+                        onPress={handleMapPress}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                        <Ionicons name="navigate" size={20} color={colors.info} />
+                    </TouchableOpacity>
+                    {booking.consignee_mobile && (
+                        <TouchableOpacity
+                            style={styles.actionIconButton}
+                            onPress={handleCallPress}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                            <Ionicons name="call" size={20} color={colors.success} />
+                        </TouchableOpacity>
+                    )}
+                </View>
             </View>
 
             {currentStatus && (
@@ -162,11 +299,31 @@ const styles = StyleSheet.create({
         fontWeight: '700',
     },
     header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
         marginBottom: layouts.spacing.md,
         paddingBottom: layouts.spacing.sm,
         borderBottomWidth: 1,
         borderBottomColor: colors.gray200,
+    },
+    headerLeft: {
+        flex: 1,
         gap: layouts.spacing.xs,
+    },
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: layouts.spacing.sm,
+        marginLeft: layouts.spacing.sm,
+    },
+    actionIconButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: colors.gray100,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     refContainer: {
         flexDirection: 'row',
