@@ -1,10 +1,10 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert } from 'react-native';
-import SignatureScreen from 'react-native-signature-canvas';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
 import LoadingIndicator from '../LoadingIndicator';
+import SignatureModal from '../SignatureModal';
 
 interface AcknowledgementModalProps {
     visible: boolean;
@@ -29,32 +29,24 @@ export default function AcknowledgementModal({
     onAcknowledge,
     onCancel
 }: AcknowledgementModalProps) {
-    const signatureRef = useRef<any>(null);
     const [signature, setSignature] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
-    const [scrollEnabled, setScrollEnabled] = useState(true);
+    const [signatureModalVisible, setSignatureModalVisible] = useState(false);
 
-    const handleClear = () => {
-        signatureRef.current?.clearSignature();
-        setSignature(null);
+    const handleOpenSignature = () => {
+        setSignatureModalVisible(true);
     };
 
-    const handleEnd = () => {
-        signatureRef.current?.readSignature();
-        setScrollEnabled(true);
+    const handleSignatureSave = (sig: string) => {
+        setSignature(sig);
+        setSignatureModalVisible(false);
     };
 
-    const handleBegin = () => {
-        setScrollEnabled(false);
+    const handleSignatureCancel = () => {
+        setSignatureModalVisible(false);
     };
 
-    const handleOK = (sig: string) => {
-        if (sig) {
-            setSignature(sig);
-        }
-    };
-
-    const handleEmpty = () => {
+    const handleClearSignature = () => {
         setSignature(null);
     };
 
@@ -74,12 +66,6 @@ export default function AcknowledgementModal({
         }
     };
 
-    const style = `.m-signature-pad {box-shadow: none; border: none; margin: 0; padding: 0;} 
-                   .m-signature-pad--body {border: none; margin: 0; padding: 0;}
-                   .m-signature-pad--footer {display: none; margin: 0; padding: 0;}
-                   body,html {width: 100%; height: 100%; margin: 0; padding: 0;}
-                   canvas {width: 100% !important; height: 100% !important;}`;
-
     if (loading) {
         return <LoadingIndicator fullScreen message="Saving acknowledgement..." />;
     }
@@ -94,7 +80,7 @@ export default function AcknowledgementModal({
                     </TouchableOpacity>
                 </View>
 
-                <ScrollView style={styles.content} scrollEnabled={scrollEnabled}>
+                <ScrollView style={styles.content}>
                     <View style={styles.infoCard}>
                         <Text style={styles.infoTitle}>Run-Sheet Details</Text>
                         <View style={styles.infoRow}>
@@ -129,39 +115,38 @@ export default function AcknowledgementModal({
 
                     <View style={styles.signatureSection}>
                         <Text style={styles.sectionTitle}>Driver Signature *</Text>
-                        <View style={styles.signatureCanvas}>
-                            <SignatureScreen
-                                ref={signatureRef}
-                                onEnd={handleEnd}
-                                onOK={handleOK}
-                                onEmpty={handleEmpty}
-                                onBegin={handleBegin}
-                                autoClear={false}
-                                descriptionText=""
-                                clearText=""
-                                confirmText=""
-                                webStyle={style}
-                                backgroundColor="rgb(255,255,255)"
-                                penColor="black"
-                                dotSize={2}
-                                minWidth={2}
-                                maxWidth={3}
-                                trimWhitespace={false}
-                                imageType="image/png"
-                            />
-                        </View>
-                        <View style={styles.signatureActions}>
-                            <TouchableOpacity style={styles.clearButton} onPress={handleClear}>
-                                <Ionicons name="trash-outline" size={20} color={colors.error} />
-                                <Text style={styles.clearButtonText}>Clear</Text>
-                            </TouchableOpacity>
-                            {signature && (
-                                <View style={styles.savedIndicator}>
-                                    <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-                                    <Text style={styles.savedText}>Signature Saved</Text>
+                        
+                        {signature ? (
+                            <View style={styles.signaturePreview}>
+                                <Image
+                                    source={{ uri: signature }}
+                                    style={styles.signatureImage}
+                                    resizeMode="contain"
+                                />
+                                <View style={styles.signatureActions}>
+                                    <TouchableOpacity style={styles.clearButton} onPress={handleClearSignature}>
+                                        <Ionicons name="trash-outline" size={18} color={colors.error} />
+                                        <Text style={styles.clearButtonText}>Clear</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={styles.editButton} onPress={handleOpenSignature}>
+                                        <Ionicons name="create-outline" size={18} color={colors.primary} />
+                                        <Text style={styles.editButtonText}>Re-sign</Text>
+                                    </TouchableOpacity>
                                 </View>
-                            )}
-                        </View>
+                                <View style={styles.savedBadge}>
+                                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                                    <Text style={styles.savedBadgeText}>Signature Saved</Text>
+                                </View>
+                            </View>
+                        ) : (
+                            <TouchableOpacity style={styles.signatureButton} onPress={handleOpenSignature}>
+                                <View style={styles.signatureButtonContent}>
+                                    <Ionicons name="pencil" size={32} color={colors.primary} />
+                                    <Text style={styles.signatureButtonText}>Tap to Sign</Text>
+                                    <Text style={styles.signatureButtonHint}>Opens full screen signature pad</Text>
+                                </View>
+                            </TouchableOpacity>
+                        )}
                     </View>
                 </ScrollView>
 
@@ -182,6 +167,12 @@ export default function AcknowledgementModal({
                     </TouchableOpacity>
                 </View>
             </View>
+
+            <SignatureModal
+                visible={signatureModalVisible}
+                onSave={handleSignatureSave}
+                onCancel={handleSignatureCancel}
+            />
         </Modal>
     );
 }
@@ -273,41 +264,85 @@ const styles = StyleSheet.create({
         color: colors.text,
         marginBottom: layouts.spacing.sm,
     },
-    signatureCanvas: {
-        height: 200,
+    signatureButton: {
+        height: 150,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: colors.gray100,
+        borderStyle: 'dashed',
+        borderWidth: 2,
+        borderColor: colors.gray300,
+        borderRadius: layouts.borderRadius.md,
+    },
+    signatureButtonContent: {
+        alignItems: 'center',
+        gap: layouts.spacing.sm,
+    },
+    signatureButtonText: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: colors.primary,
+    },
+    signatureButtonHint: {
+        fontSize: 12,
+        color: colors.textLight,
+    },
+    signaturePreview: {
         borderWidth: 1,
         borderColor: colors.gray300,
         borderRadius: layouts.borderRadius.md,
         overflow: 'hidden',
+        position: 'relative',
+    },
+    signatureImage: {
+        height: 150,
+        width: '100%',
         backgroundColor: colors.background,
     },
     signatureActions: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
         padding: layouts.spacing.sm,
         backgroundColor: colors.gray100,
-        borderBottomLeftRadius: layouts.borderRadius.md,
-        borderBottomRightRadius: layouts.borderRadius.md,
+        borderTopWidth: 1,
+        borderTopColor: colors.gray200,
     },
     clearButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: layouts.spacing.xs,
         padding: layouts.spacing.sm,
+        gap: 4,
     },
     clearButtonText: {
         fontSize: 14,
         color: colors.error,
         fontWeight: '600',
     },
-    savedIndicator: {
+    editButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: layouts.spacing.xs,
+        padding: layouts.spacing.sm,
+        gap: 4,
     },
-    savedText: {
+    editButtonText: {
         fontSize: 14,
+        color: colors.primary,
+        fontWeight: '600',
+    },
+    savedBadge: {
+        position: 'absolute',
+        top: layouts.spacing.sm,
+        right: layouts.spacing.sm,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.success + '20',
+        paddingHorizontal: layouts.spacing.sm,
+        paddingVertical: 4,
+        borderRadius: layouts.borderRadius.full,
+        gap: 4,
+    },
+    savedBadgeText: {
+        fontSize: 12,
         color: colors.success,
         fontWeight: '600',
     },
