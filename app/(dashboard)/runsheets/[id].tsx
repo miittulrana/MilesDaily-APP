@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, RefreshControl } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
@@ -12,6 +12,9 @@ import { AssignedRunsheet, RunsheetBooking, BookingStatusMap, RouteOptimizationD
 import { isBizhandleLoggedIn } from '../../../lib/bizhandleAuth';
 import { checkAcknowledgementExists, saveAcknowledgement } from '../../../lib/runsheetAcknowledgement';
 import { supabase } from '../../../lib/supabase';
+
+// Status ID 41 = "With Delivery Courier" - bookings pending delivery
+const PENDING_DELIVERY_STATUS_ID = 41;
 
 export default function RunsheetDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -29,16 +32,48 @@ export default function RunsheetDetailScreen() {
     const [bookingStatuses, setBookingStatuses] = useState<BookingStatusMap>({});
     const [loadingStatuses, setLoadingStatuses] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const [initialLoadDone, setInitialLoadDone] = useState(false);
 
     useEffect(() => {
         loadRunsheetDetail();
     }, [id]);
 
+    // Auto-refresh statuses when screen comes back into focus
+    useFocusEffect(
+        useCallback(() => {
+            // Only refresh if initial load is done (not on first mount)
+            if (initialLoadDone && runsheet) {
+                console.log('[RunsheetDetail] Screen focused - refreshing statuses...');
+                refreshBookingStatuses();
+            }
+        }, [initialLoadDone, runsheet])
+    );
+
     useEffect(() => {
         if (runsheet) {
             prepareDisplayBookings();
         }
-    }, [runsheet, routeOptimization, searchQuery, sortBy]);
+    }, [runsheet, routeOptimization, searchQuery, sortBy, bookingStatuses]);
+
+    const refreshBookingStatuses = async () => {
+        if (!runsheet) return;
+        
+        try {
+            setLoadingStatuses(true);
+            const bookings = runsheet.runsheet.csv_data;
+            if (bookings.length === 0) {
+                setLoadingStatuses(false);
+                return;
+            }
+            const originalStaffId = runsheet.runsheet.staff_id;
+            const statuses = await fetchBookingStatuses(bookings, originalStaffId);
+            setBookingStatuses(statuses);
+        } catch (err) {
+            console.error('Error refreshing booking statuses:', err);
+        } finally {
+            setLoadingStatuses(false);
+        }
+    };
 
     const loadBookingStatuses = async (runsheetData: AssignedRunsheet) => {
         try {
@@ -88,6 +123,7 @@ export default function RunsheetDetailScreen() {
             }
 
             await loadBookingStatuses(data);
+            setInitialLoadDone(true);
         } catch (err: any) {
             setError(err.message || 'Failed to load runsheet details');
         } finally {
@@ -138,8 +174,21 @@ export default function RunsheetDetailScreen() {
             );
         }
 
-        if (!runsheet.is_optimized || sortBy !== 'sequence') {
-            bookings.sort((a, b) => {
+        // Sort bookings: Status 41 (pending delivery) on TOP, all other statuses at BOTTOM
+        bookings.sort((a, b) => {
+            const statusA = bookingStatuses[a.miles_ref];
+            const statusB = bookingStatuses[b.miles_ref];
+            
+            // Check if status is 41 (pending delivery) or no status yet (treat as pending)
+            const aIsPending = !statusA || statusA.status_id === PENDING_DELIVERY_STATUS_ID;
+            const bIsPending = !statusB || statusB.status_id === PENDING_DELIVERY_STATUS_ID;
+            
+            // Pending (status 41) goes to top, others go to bottom
+            if (aIsPending && !bIsPending) return -1; // a is pending, b is not -> a comes first
+            if (!aIsPending && bIsPending) return 1;  // a is not pending, b is -> b comes first
+            
+            // If both have same pending status, apply secondary sort
+            if (!runsheet.is_optimized || sortBy !== 'sequence') {
                 if (sortBy === 'city') {
                     return a.consignee_city.localeCompare(b.consignee_city);
                 } else if (sortBy === 'company') {
@@ -147,9 +196,10 @@ export default function RunsheetDetailScreen() {
                 } else if (sortBy === 'miles_ref') {
                     return a.miles_ref.localeCompare(b.miles_ref);
                 }
-                return 0;
-            });
-        }
+            }
+            
+            return 0; // Keep original order for items with same status category
+        });
 
         setDisplayBookings(bookings);
     };
@@ -372,7 +422,7 @@ export default function RunsheetDetailScreen() {
             {loadingStatuses && (
                 <View style={styles.statusLoadingBanner}>
                     <ActivityIndicator size="small" color={colors.primary} />
-                    <Text style={styles.statusLoadingText}>Loading status updates...</Text>
+                    <Text style={styles.statusLoadingText}>Updating statuses...</Text>
                 </View>
             )}
 

@@ -184,25 +184,8 @@ export default function BulkScanScreen() {
 
     setLoading(false);
 
-    Alert.alert(
-      'Update Complete',
-      `Success: ${successCount}\nFailed: ${failCount}`,
-      [
-        {
-          text: 'Scan More',
-          onPress: () => {
-            setScannedBookings([]);
-            setSelectedStatus(null);
-            setShowStatusSelector(false);
-            setScanning(true);
-          },
-        },
-        {
-          text: 'Done',
-          onPress: () => router.back(),
-        },
-      ]
-    );
+    // Auto navigate back after bulk update
+    router.back();
   };
 
   const handleCancel = () => {

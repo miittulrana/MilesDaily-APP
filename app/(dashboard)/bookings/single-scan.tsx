@@ -138,21 +138,7 @@ export default function SingleScanScreen() {
     setLoading(false);
 
     if (result.success) {
-      Alert.alert('Success', 'Booking updated successfully', [
-        {
-          text: 'Scan Another',
-          onPress: () => {
-            setBooking(null);
-            setSelectedStatus(null);
-            setShowStatusSelector(false);
-            setScanning(true);
-          },
-        },
-        {
-          text: 'Done',
-          onPress: () => router.back(),
-        },
-      ]);
+      router.back();
     } else {
       Alert.alert('Error', result.error || 'Update failed');
     }
@@ -203,18 +189,6 @@ export default function SingleScanScreen() {
                 </Text>
               </View>
             </View>
-
-            {booking.consignee_address && (
-              <View style={styles.addressSection}>
-                <Text style={styles.sectionTitle}>Consignee</Text>
-                <Text style={styles.addressText}>
-                  {booking.consignee_address.name}
-                </Text>
-                <Text style={styles.addressText}>
-                  {booking.consignee_address.address}
-                </Text>
-              </View>
-            )}
           </View>
 
           {driverTypes.length > 0 && (
@@ -272,7 +246,6 @@ const styles = StyleSheet.create({
   bookingHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: layouts.spacing.md,
   },
   bookingInfo: {
     flex: 1,
@@ -292,22 +265,11 @@ const styles = StyleSheet.create({
     color: colors.success,
     fontWeight: '700',
   },
-  addressSection: {
-    borderTopWidth: 1,
-    borderTopColor: colors.gray200,
-    paddingTop: layouts.spacing.md,
-    marginTop: layouts.spacing.md,
-  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
     marginBottom: layouts.spacing.sm,
-  },
-  addressText: {
-    fontSize: 14,
-    color: colors.textLight,
-    marginBottom: layouts.spacing.xs,
   },
   driverTypeInfo: {
     flexDirection: 'row',

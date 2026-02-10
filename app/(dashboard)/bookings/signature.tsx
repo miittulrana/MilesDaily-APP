@@ -119,12 +119,9 @@ export default function SignatureScreen() {
         setLoading(false);
 
         if (result.success) {
-          Alert.alert('Success', 'Booking updated successfully with POD photos', [
-            {
-              text: 'OK',
-              onPress: () => router.back(),
-            },
-          ]);
+          // Navigate back twice to get out of signature screen and single-scan
+          router.back();
+          router.back();
         } else {
           Alert.alert('Error', result.error || 'Update failed');
         }
@@ -167,16 +164,9 @@ export default function SignatureScreen() {
 
         setLoading(false);
 
-        Alert.alert(
-          'Update Complete',
-          `Success: ${successCount}\nFailed: ${failCount}\nPOD photos saved for all bookings`,
-          [
-            {
-              text: 'OK',
-              onPress: () => router.back(),
-            },
-          ]
-        );
+        // Navigate back twice to get out of signature screen and bulk-scan
+        router.back();
+        router.back();
       }
     } catch (error) {
       console.error('Update error:', error);
