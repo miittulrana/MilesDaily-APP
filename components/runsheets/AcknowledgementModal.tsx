@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert } from 'react-native';
-import { WebView } from 'react-native-webview';
+import SignatureScreen from 'react-native-signature-canvas';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
@@ -29,36 +29,33 @@ export default function AcknowledgementModal({
     onAcknowledge,
     onCancel
 }: AcknowledgementModalProps) {
-    const webViewRef = useRef<WebView>(null);
+    const signatureRef = useRef<any>(null);
     const [signature, setSignature] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [scrollEnabled, setScrollEnabled] = useState(true);
 
     const handleClear = () => {
-        webViewRef.current?.injectJavaScript('clearCanvas();');
+        signatureRef.current?.clearSignature();
         setSignature(null);
     };
 
-    const handleSave = () => {
-        webViewRef.current?.injectJavaScript(`
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-                type: 'signature',
-                data: canvas.toDataURL('image/png')
-            }));
-        `);
+    const handleEnd = () => {
+        signatureRef.current?.readSignature();
+        setScrollEnabled(true);
     };
 
-    const handleMessage = (event: any) => {
-        try {
-            const message = JSON.parse(event.nativeEvent.data);
+    const handleBegin = () => {
+        setScrollEnabled(false);
+    };
 
-            if (message.type === 'signature' && message.data) {
-                setSignature(message.data);
-            } else if (message.type === 'stroke') {
-                handleSave();
-            }
-        } catch (error) {
-            console.error('Signature error:', error);
+    const handleOK = (sig: string) => {
+        if (sig) {
+            setSignature(sig);
         }
+    };
+
+    const handleEmpty = () => {
+        setSignature(null);
     };
 
     const handleAcknowledge = async () => {
@@ -77,87 +74,11 @@ export default function AcknowledgementModal({
         }
     };
 
-    const signatureHTML = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-            <style>
-                * { margin: 0; padding: 0; }
-                body { overflow: hidden; touch-action: none; }
-                canvas { 
-                    display: block; 
-                    width: 100%;
-                    height: 100vh;
-                    touch-action: none;
-                    background: white;
-                }
-            </style>
-        </head>
-        <body>
-            <canvas id="canvas"></canvas>
-            <script>
-                const canvas = document.getElementById('canvas');
-                const ctx = canvas.getContext('2d');
-                let drawing = false;
-                let lastX = 0;
-                let lastY = 0;
-
-                function resizeCanvas() {
-                    canvas.width = window.innerWidth;
-                    canvas.height = window.innerHeight;
-                    ctx.strokeStyle = '#000';
-                    ctx.lineWidth = 2;
-                    ctx.lineCap = 'round';
-                    ctx.lineJoin = 'round';
-                }
-
-                resizeCanvas();
-                window.addEventListener('resize', resizeCanvas);
-
-                function startDrawing(e) {
-                    drawing = true;
-                    const touch = e.touches ? e.touches[0] : e;
-                    lastX = touch.clientX;
-                    lastY = touch.clientY;
-                }
-
-                function draw(e) {
-                    if (!drawing) return;
-                    e.preventDefault();
-                    
-                    const touch = e.touches ? e.touches[0] : e;
-                    ctx.beginPath();
-                    ctx.moveTo(lastX, lastY);
-                    ctx.lineTo(touch.clientX, touch.clientY);
-                    ctx.stroke();
-                    lastX = touch.clientX;
-                    lastY = touch.clientY;
-                }
-
-                function stopDrawing() {
-                    if (drawing) {
-                        window.ReactNativeWebView.postMessage(JSON.stringify({
-                            type: 'stroke'
-                        }));
-                    }
-                    drawing = false;
-                }
-
-                canvas.addEventListener('touchstart', startDrawing);
-                canvas.addEventListener('touchmove', draw);
-                canvas.addEventListener('touchend', stopDrawing);
-                canvas.addEventListener('mousedown', startDrawing);
-                canvas.addEventListener('mousemove', draw);
-                canvas.addEventListener('mouseup', stopDrawing);
-
-                function clearCanvas() {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                }
-            </script>
-        </body>
-        </html>
-    `;
+    const style = `.m-signature-pad {box-shadow: none; border: none; margin: 0; padding: 0;} 
+                   .m-signature-pad--body {border: none; margin: 0; padding: 0;}
+                   .m-signature-pad--footer {display: none; margin: 0; padding: 0;}
+                   body,html {width: 100%; height: 100%; margin: 0; padding: 0;}
+                   canvas {width: 100% !important; height: 100% !important;}`;
 
     if (loading) {
         return <LoadingIndicator fullScreen message="Saving acknowledgement..." />;
@@ -173,7 +94,7 @@ export default function AcknowledgementModal({
                     </TouchableOpacity>
                 </View>
 
-                <ScrollView style={styles.content}>
+                <ScrollView style={styles.content} scrollEnabled={scrollEnabled}>
                     <View style={styles.infoCard}>
                         <Text style={styles.infoTitle}>Run-Sheet Details</Text>
                         <View style={styles.infoRow}>
@@ -209,11 +130,24 @@ export default function AcknowledgementModal({
                     <View style={styles.signatureSection}>
                         <Text style={styles.sectionTitle}>Driver Signature *</Text>
                         <View style={styles.signatureCanvas}>
-                            <WebView
-                                ref={webViewRef}
-                                source={{ html: signatureHTML }}
-                                onMessage={handleMessage}
-                                style={styles.webView}
+                            <SignatureScreen
+                                ref={signatureRef}
+                                onEnd={handleEnd}
+                                onOK={handleOK}
+                                onEmpty={handleEmpty}
+                                onBegin={handleBegin}
+                                autoClear={false}
+                                descriptionText=""
+                                clearText=""
+                                confirmText=""
+                                webStyle={style}
+                                backgroundColor="rgb(255,255,255)"
+                                penColor="black"
+                                dotSize={2}
+                                minWidth={2}
+                                maxWidth={3}
+                                trimWhitespace={false}
+                                imageType="image/png"
                             />
                         </View>
                         <View style={styles.signatureActions}>
@@ -345,10 +279,6 @@ const styles = StyleSheet.create({
         borderColor: colors.gray300,
         borderRadius: layouts.borderRadius.md,
         overflow: 'hidden',
-        backgroundColor: colors.background,
-    },
-    webView: {
-        flex: 1,
         backgroundColor: colors.background,
     },
     signatureActions: {

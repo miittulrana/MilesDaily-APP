@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { StyleSheet, View, TouchableOpacity, Text } from 'react-native';
-import { WebView } from 'react-native-webview';
+import SignatureScreen from 'react-native-signature-canvas';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/Colors';
 import { layouts } from '../constants/layouts';
@@ -10,132 +10,62 @@ interface SignatureCanvasProps {
 }
 
 export default function SignatureCanvas({ onSignature }: SignatureCanvasProps) {
-  const webViewRef = useRef<WebView>(null);
+  const signatureRef = useRef<any>(null);
   const [hasSignature, setHasSignature] = useState(false);
 
   const handleClear = () => {
-    webViewRef.current?.injectJavaScript('clearCanvas();');
+    signatureRef.current?.clearSignature();
     setHasSignature(false);
     onSignature(null);
   };
 
-  const handleSave = () => {
-    webViewRef.current?.injectJavaScript(`
-      window.ReactNativeWebView.postMessage(JSON.stringify({
-        type: 'signature',
-        data: canvas.toDataURL('image/png')
-      }));
-    `);
+  const handleEnd = () => {
+    signatureRef.current?.readSignature();
   };
 
-  const handleMessage = (event: any) => {
-    try {
-      const message = JSON.parse(event.nativeEvent.data);
-      
-      if (message.type === 'signature' && message.data) {
-        const base64Data = message.data.split(',')[1];
-        setHasSignature(true);
-        onSignature(base64Data);
-      } else if (message.type === 'stroke') {
-        if (!hasSignature) {
-          handleSave();
-        }
-      }
-    } catch (error) {
-      console.error('Signature error:', error);
+  const handleOK = (signature: string) => {
+    if (signature) {
+      const base64Data = signature.replace('data:image/png;base64,', '');
+      setHasSignature(true);
+      onSignature(base64Data);
     }
   };
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <style>
-          * { margin: 0; padding: 0; }
-          body { overflow: hidden; touch-action: none; }
-          canvas { 
-            display: block; 
-            width: 100%;
-            height: 100vh;
-            touch-action: none;
-            background: white;
-          }
-        </style>
-      </head>
-      <body>
-        <canvas id="canvas"></canvas>
-        <script>
-          const canvas = document.getElementById('canvas');
-          const ctx = canvas.getContext('2d');
-          let drawing = false;
-          let lastX = 0;
-          let lastY = 0;
+  const handleEmpty = () => {
+    setHasSignature(false);
+    onSignature(null);
+  };
 
-          function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 2;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-          }
+  const handleBegin = () => {
+  };
 
-          resizeCanvas();
-          window.addEventListener('resize', resizeCanvas);
-
-          function startDrawing(e) {
-            drawing = true;
-            const touch = e.touches ? e.touches[0] : e;
-            lastX = touch.clientX;
-            lastY = touch.clientY;
-          }
-
-          function draw(e) {
-            if (!drawing) return;
-            e.preventDefault();
-            
-            const touch = e.touches ? e.touches[0] : e;
-            ctx.beginPath();
-            ctx.moveTo(lastX, lastY);
-            ctx.lineTo(touch.clientX, touch.clientY);
-            ctx.stroke();
-            lastX = touch.clientX;
-            lastY = touch.clientY;
-          }
-
-          function stopDrawing() {
-            if (drawing) {
-              window.ReactNativeWebView.postMessage(JSON.stringify({
-                type: 'stroke'
-              }));
-            }
-            drawing = false;
-          }
-
-          canvas.addEventListener('touchstart', startDrawing);
-          canvas.addEventListener('touchmove', draw);
-          canvas.addEventListener('touchend', stopDrawing);
-          canvas.addEventListener('mousedown', startDrawing);
-          canvas.addEventListener('mousemove', draw);
-          canvas.addEventListener('mouseup', stopDrawing);
-
-          function clearCanvas() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-          }
-        </script>
-      </body>
-    </html>
-  `;
+  const style = `.m-signature-pad {box-shadow: none; border: none; margin: 0; padding: 0;} 
+                 .m-signature-pad--body {border: none; margin: 0; padding: 0;}
+                 .m-signature-pad--footer {display: none; margin: 0; padding: 0;}
+                 body,html {width: 100%; height: 100%; margin: 0; padding: 0;}
+                 canvas {width: 100% !important; height: 100% !important;}`;
 
   return (
     <View style={styles.container}>
       <View style={styles.canvasContainer}>
-        <WebView
-          ref={webViewRef}
-          source={{ html }}
-          onMessage={handleMessage}
-          style={styles.webView}
+        <SignatureScreen
+          ref={signatureRef}
+          onEnd={handleEnd}
+          onOK={handleOK}
+          onEmpty={handleEmpty}
+          onBegin={handleBegin}
+          autoClear={false}
+          descriptionText=""
+          clearText=""
+          confirmText=""
+          webStyle={style}
+          backgroundColor="rgb(255,255,255)"
+          penColor="black"
+          dotSize={2}
+          minWidth={2}
+          maxWidth={3}
+          trimWhitespace={false}
+          imageType="image/png"
         />
       </View>
       <View style={styles.actions}>
@@ -163,10 +93,6 @@ const styles = StyleSheet.create({
   },
   canvasContainer: {
     height: 200,
-    backgroundColor: colors.background,
-  },
-  webView: {
-    flex: 1,
     backgroundColor: colors.background,
   },
   actions: {
