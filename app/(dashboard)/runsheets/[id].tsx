@@ -13,7 +13,6 @@ import { isBizhandleLoggedIn } from '../../../lib/bizhandleAuth';
 import { checkAcknowledgementExists, saveAcknowledgement } from '../../../lib/runsheetAcknowledgement';
 import { supabase } from '../../../lib/supabase';
 
-// Status ID 41 = "With Delivery Courier" - bookings pending delivery
 const PENDING_DELIVERY_STATUS_ID = 41;
 
 export default function RunsheetDetailScreen() {
@@ -38,10 +37,8 @@ export default function RunsheetDetailScreen() {
         loadRunsheetDetail();
     }, [id]);
 
-    // Auto-refresh statuses when screen comes back into focus
     useFocusEffect(
         useCallback(() => {
-            // Only refresh if initial load is done (not on first mount)
             if (initialLoadDone && runsheet) {
                 console.log('[RunsheetDetail] Screen focused - refreshing statuses...');
                 refreshBookingStatuses();
@@ -102,7 +99,6 @@ export default function RunsheetDetailScreen() {
             console.log('[RunsheetDetail] is_optimized:', data.is_optimized);
             console.log('[RunsheetDetail] optimization_id:', data.optimization_id);
 
-            // KEY FIX: Use optimization_id (not runsheet_id) to fetch from route_optimizations
             if (data.is_optimized && data.optimization_id) {
                 console.log('[RunsheetDetail] Fetching optimization data...');
                 const optimization = await fetchRouteOptimization(data.optimization_id);
@@ -157,6 +153,8 @@ export default function RunsheetDetailScreen() {
                 driver_name: runsheet.runsheet.staff_name,
                 total_pieces: stop.total_pieces,
                 total_weight: stop.total_weight,
+                lat: stop.lat,
+                lng: stop.lng,
             }));
         } else {
             bookings = [...runsheet.runsheet.csv_data];
@@ -174,20 +172,16 @@ export default function RunsheetDetailScreen() {
             );
         }
 
-        // Sort bookings: Status 41 (pending delivery) on TOP, all other statuses at BOTTOM
         bookings.sort((a, b) => {
             const statusA = bookingStatuses[a.miles_ref];
             const statusB = bookingStatuses[b.miles_ref];
             
-            // Check if status is 41 (pending delivery) or no status yet (treat as pending)
             const aIsPending = !statusA || statusA.status_id === PENDING_DELIVERY_STATUS_ID;
             const bIsPending = !statusB || statusB.status_id === PENDING_DELIVERY_STATUS_ID;
             
-            // Pending (status 41) goes to top, others go to bottom
-            if (aIsPending && !bIsPending) return -1; // a is pending, b is not -> a comes first
-            if (!aIsPending && bIsPending) return 1;  // a is not pending, b is -> b comes first
+            if (aIsPending && !bIsPending) return -1;
+            if (!aIsPending && bIsPending) return 1;
             
-            // If both have same pending status, apply secondary sort
             if (!runsheet.is_optimized || sortBy !== 'sequence') {
                 if (sortBy === 'city') {
                     return a.consignee_city.localeCompare(b.consignee_city);
@@ -198,31 +192,10 @@ export default function RunsheetDetailScreen() {
                 }
             }
             
-            return 0; // Keep original order for items with same status category
+            return 0;
         });
 
         setDisplayBookings(bookings);
-    };
-
-    const handleViewMap = () => {
-        if (!runsheet || !runsheet.is_optimized || !routeOptimization || !routeOptimization.optimized_stops) {
-            Alert.alert('Not Available', 'Route map is only available for optimized runsheets.');
-            return;
-        }
-
-        console.log('[handleViewMap] Passing', routeOptimization.optimized_stops.length, 'stops to map');
-
-        router.push({
-            pathname: '/(dashboard)/runsheets/route-map',
-            params: {
-                runsheetId: id,
-                optimizedData: JSON.stringify(routeOptimization.optimized_stops),
-                staffName: runsheet.runsheet.staff_name,
-                totalDistance: routeOptimization.total_distance_km.toString(),
-                totalDuration: routeOptimization.total_duration_minutes.toString(),
-                departureTime: routeOptimization.departure_time || '07:30',
-            },
-        });
     };
 
     const handleBookingPress = async (booking: RunsheetBooking) => {
@@ -306,9 +279,23 @@ export default function RunsheetDetailScreen() {
         return optimizedStop?.stop_number;
     };
 
+    const getBookingCoordinates = (booking: RunsheetBooking): { lat?: number; lng?: number } => {
+        if (!runsheet?.is_optimized || !routeOptimization?.optimized_stops) {
+            return {};
+        }
+        const optimizedStop = routeOptimization.optimized_stops.find(
+            (stop: OptimizedStopData) => stop.miles_ref === booking.miles_ref
+        );
+        if (optimizedStop && optimizedStop.lat && optimizedStop.lng) {
+            return { lat: optimizedStop.lat, lng: optimizedStop.lng };
+        }
+        return {};
+    };
+
     const renderBooking = ({ item, index }: { item: RunsheetBooking; index: number }) => {
         const bookingStatus = bookingStatuses[item.miles_ref];
         const sequenceNumber = getSequenceNumber(item, index);
+        const coordinates = getBookingCoordinates(item);
 
         return (
             <BookingCard
@@ -316,6 +303,8 @@ export default function RunsheetDetailScreen() {
                 sequenceNumber={sequenceNumber}
                 onPress={() => handleBookingPress(item)}
                 currentStatus={bookingStatus}
+                lat={coordinates.lat}
+                lng={coordinates.lng}
             />
         );
     };
@@ -337,7 +326,7 @@ export default function RunsheetDetailScreen() {
         );
     }
 
-    const hasOptimizedMap = runsheet.is_optimized && routeOptimization && routeOptimization.optimized_stops && routeOptimization.optimized_stops.length > 0;
+    const optimizedStopsCount = routeOptimization?.optimized_stops?.length || 0;
 
     return (
         <View style={styles.container}>
@@ -346,21 +335,8 @@ export default function RunsheetDetailScreen() {
                     <View style={styles.optimizedBanner}>
                         <Ionicons name="checkmark-circle" size={20} color={colors.success} />
                         <Text style={styles.optimizedText}>Route Optimized</Text>
-                        <Text style={styles.optimizedCount}>
-                            {routeOptimization.optimized_stops?.length || 0} stops • {routeOptimization.total_distance_km}km • {Math.round(routeOptimization.total_duration_minutes)}min
-                        </Text>
+                        <Text style={styles.optimizedCount}>{optimizedStopsCount} stops</Text>
                     </View>
-                )}
-
-                {hasOptimizedMap && (
-                    <TouchableOpacity
-                        style={styles.viewMapButton}
-                        onPress={handleViewMap}
-                        activeOpacity={0.8}
-                    >
-                        <Ionicons name="map" size={20} color={colors.background} />
-                        <Text style={styles.viewMapButtonText}>View Route Map</Text>
-                    </TouchableOpacity>
                 )}
             </View>
 
@@ -469,7 +445,6 @@ const styles = StyleSheet.create({
         padding: layouts.spacing.md,
         borderBottomWidth: 1,
         borderBottomColor: colors.gray200,
-        gap: layouts.spacing.sm,
     },
     optimizedBanner: {
         flexDirection: 'row',
@@ -484,27 +459,11 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
         color: colors.success,
+        flex: 1,
     },
     optimizedCount: {
-        flex: 1,
-        fontSize: 12,
-        color: colors.success,
-        fontWeight: '500',
-        textAlign: 'right',
-    },
-    viewMapButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.primary,
-        borderRadius: layouts.borderRadius.md,
-        paddingVertical: layouts.spacing.sm,
-        paddingHorizontal: layouts.spacing.lg,
-        gap: layouts.spacing.xs,
-    },
-    viewMapButtonText: {
-        color: colors.background,
         fontSize: 14,
+        color: colors.success,
         fontWeight: '700',
     },
     controls: {
