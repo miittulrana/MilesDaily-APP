@@ -6,6 +6,7 @@ import { layouts } from '../constants/layouts';
 import { Status } from '../lib/bizhandleTypes';
 import { DriverType, getStatusesForDriverTypes, isWarehouseScanStatus } from '../lib/statusPermissions';
 import { checkWarehouseLocation } from '../lib/geofenceService';
+import { ensureConnection, withRetry } from '../lib/supabase';
 
 const DELIVERED_STATUS_ID = 10;
 
@@ -28,6 +29,14 @@ export default function StatusSelector({ statuses, driverTypes = [], currentStat
 
   const isAlreadyDelivered = currentStatusId === DELIVERED_STATUS_ID;
 
+  const showConnectionError = () => {
+    Alert.alert(
+      'Connection Error',
+      'Unable to connect to server after multiple attempts. Kindly close the app completely and open again, then rescan your booking.',
+      [{ text: 'OK' }]
+    );
+  };
+
   const handleSelect = async (status: Status) => {
     if (isAlreadyDelivered) {
       Alert.alert(
@@ -42,7 +51,17 @@ export default function StatusSelector({ statuses, driverTypes = [], currentStat
       setCheckingLocation(true);
 
       try {
-        const result = await checkWarehouseLocation(status.status_id);
+        const isConnected = await ensureConnection();
+        if (!isConnected) {
+          setCheckingLocation(false);
+          showConnectionError();
+          return;
+        }
+
+        const result = await withRetry(async () => {
+          const locationResult = await checkWarehouseLocation(status.status_id);
+          return locationResult;
+        }, 3);
 
         if (!result.allowed) {
           Alert.alert(
@@ -55,11 +74,17 @@ export default function StatusSelector({ statuses, driverTypes = [], currentStat
         }
       } catch (error) {
         console.error('Warehouse location check error:', error);
-        Alert.alert(
-          'Location Error',
-          'Unable to verify your location. Please ensure location services are enabled.',
-          [{ text: 'OK' }]
-        );
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+        if (errorMessage.includes('timeout') || errorMessage.includes('Timeout') || errorMessage.includes('network') || errorMessage.includes('Network') || errorMessage.includes('aborted')) {
+          showConnectionError();
+        } else {
+          Alert.alert(
+            'Location Error',
+            'Unable to verify your location. Please ensure location services are enabled and try again.',
+            [{ text: 'OK' }]
+          );
+        }
         setCheckingLocation(false);
         return;
       }

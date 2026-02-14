@@ -12,7 +12,7 @@ import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { updateBooking } from '../../../lib/bizhandleApi';
 import { savePOD } from '../../../lib/podStorage';
-import { supabase } from '../../../lib/supabase';
+import { getAuthUser, ensureConnection } from '../../../lib/supabase';
 import FormInput from '../../../components/FormInput';
 import SignatureCanvas from '../../../components/SignatureCanvas';
 import PhotoCapture from '../../../components/PhotoCapture';
@@ -42,6 +42,22 @@ export default function SignatureScreen() {
     setStep('details');
   };
 
+  const showConnectionError = () => {
+    Alert.alert(
+      'Connection Error',
+      'Unable to connect to server after multiple attempts. Kindly close the app completely and open again, then rescan your booking.',
+      [
+        {
+          text: 'OK',
+          onPress: () => {
+            router.back();
+            router.back();
+          }
+        }
+      ]
+    );
+  };
+
   const handleUpdate = async () => {
     console.log('=== HANDLE UPDATE STARTED ===');
     console.log('Client Name:', clientName);
@@ -69,14 +85,35 @@ export default function SignatureScreen() {
     console.log('Delivered time:', delivered_time);
 
     try {
-      console.log('Getting authenticated user...');
-      const { data: { user } } = await supabase.auth.getUser();
+      const isConnected = await ensureConnection();
+      if (!isConnected) {
+        setLoading(false);
+        showConnectionError();
+        return;
+      }
+
+      console.log('Getting authenticated user with retry...');
+
+      let user = null;
+      try {
+        user = await getAuthUser();
+      } catch (authError) {
+        console.error('Auth error after retries:', authError);
+        setLoading(false);
+        showConnectionError();
+        return;
+      }
+
       console.log('User ID:', user?.id);
 
       if (!user) {
         console.error('ERROR: No authenticated user');
-        Alert.alert('Error', 'User not authenticated');
         setLoading(false);
+        Alert.alert(
+          'Session Expired',
+          'Your session has expired. Kindly close the app and login again.',
+          [{ text: 'OK', onPress: () => router.replace('/(auth)/login') }]
+        );
         return;
       }
 
@@ -119,11 +156,14 @@ export default function SignatureScreen() {
         setLoading(false);
 
         if (result.success) {
-          // Navigate back twice to get out of signature screen and single-scan
           router.back();
           router.back();
         } else {
-          Alert.alert('Error', result.error || 'Update failed');
+          if (result.error && (result.error.includes('timeout') || result.error.includes('Timeout') || result.error.includes('Connection'))) {
+            showConnectionError();
+          } else {
+            Alert.alert('Error', result.error || 'Update failed');
+          }
         }
       } else {
         const bookingIds = JSON.parse(params.booking_ids as string);
@@ -164,14 +204,23 @@ export default function SignatureScreen() {
 
         setLoading(false);
 
-        // Navigate back twice to get out of signature screen and bulk-scan
         router.back();
         router.back();
       }
     } catch (error) {
       console.error('Update error:', error);
       setLoading(false);
-      Alert.alert('Error', 'Failed to update booking');
+
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('timeout') || errorMessage.includes('Timeout') || errorMessage.includes('network') || errorMessage.includes('Network')) {
+        showConnectionError();
+      } else {
+        Alert.alert(
+          'Error',
+          'Failed to update booking. Kindly close the app and try again.',
+          [{ text: 'OK' }]
+        );
+      }
     }
   };
 
@@ -217,8 +266,8 @@ export default function SignatureScreen() {
           Please collect customer information and signature
         </Text>
 
-        <PhotoGallery 
-          photos={photos} 
+        <PhotoGallery
+          photos={photos}
           onRemovePhoto={(index) => {
             const newPhotos = photos.filter((_, i) => i !== index);
             setPhotos(newPhotos);

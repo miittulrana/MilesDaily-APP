@@ -1,14 +1,115 @@
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { KeyboardAvoidingView, Platform, AppState, AppStateStatus, Alert, View, Text } from 'react-native';
+import { KeyboardAvoidingView, Platform, AppState, AppStateStatus, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
-import { supabase } from '../lib/supabase';
+import { supabase, initSupabaseKeepAlive } from '../lib/supabase';
 import { notificationService } from '../lib/notificationService';
 import { initOfflineQueue } from '../lib/offlineQueue';
 
-export default function RootLayout() {
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends React.Component<{ children: React.ReactNode; onReset: () => void }, ErrorBoundaryState> {
+  constructor(props: { children: React.ReactNode; onReset: () => void }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('App Error Caught:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <SafeAreaProvider>
+          <View style={errorStyles.container}>
+            <View style={errorStyles.content}>
+              <Text style={errorStyles.icon}>⚠️</Text>
+              <Text style={errorStyles.title}>Something went wrong</Text>
+              <Text style={errorStyles.message}>
+                Kindly close the app completely and open again, then rescan your booking.
+              </Text>
+              <Text style={errorStyles.hint}>
+                If this keeps happening, check your internet connection.
+              </Text>
+              <TouchableOpacity 
+                style={errorStyles.button}
+                onPress={() => {
+                  this.setState({ hasError: false, error: null });
+                  this.props.onReset();
+                }}
+              >
+                <Text style={errorStyles.buttonText}>Try Again</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </SafeAreaProvider>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+const errorStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  content: {
+    alignItems: 'center',
+    maxWidth: 320,
+  },
+  icon: {
+    fontSize: 64,
+    marginBottom: 24,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  message: {
+    fontSize: 16,
+    color: '#333333',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 12,
+  },
+  hint: {
+    fontSize: 14,
+    color: '#666666',
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  button: {
+    backgroundColor: '#ff6b00',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
+
+function RootLayoutContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
@@ -19,6 +120,8 @@ export default function RootLayout() {
   const segments = useSegments();
 
   useEffect(() => {
+    const cleanupKeepAlive = initSupabaseKeepAlive();
+
     const initializeApp = async () => {
       try {
         console.log('Initializing app...');
@@ -80,9 +183,7 @@ export default function RootLayout() {
         setInitError('No internet connection');
       } else if (initError === 'No internet connection') {
         setInitError(null);
-        if (!initialCheckDone) {
-          initializeApp();
-        }
+        initializeApp();
       }
     });
 
@@ -135,6 +236,7 @@ export default function RootLayout() {
       responseSubscription.remove();
       receivedSubscription.remove();
       unsubscribeNetInfo();
+      cleanupKeepAlive();
     };
   }, [router]);
 
@@ -205,5 +307,19 @@ export default function RootLayout() {
         <Slot />
       </KeyboardAvoidingView>
     </SafeAreaProvider>
+  );
+}
+
+export default function RootLayout() {
+  const [resetKey, setResetKey] = useState(0);
+
+  const handleReset = () => {
+    setResetKey(prev => prev + 1);
+  };
+
+  return (
+    <ErrorBoundary key={resetKey} onReset={handleReset}>
+      <RootLayoutContent />
+    </ErrorBoundary>
   );
 }
