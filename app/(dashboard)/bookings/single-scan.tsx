@@ -14,10 +14,22 @@ import { layouts } from '../../../constants/layouts';
 import { findBooking, getStatuses, updateBooking } from '../../../lib/bizhandleApi';
 import { Booking, Status } from '../../../lib/bizhandleTypes';
 import { getDriverInfo } from '../../../lib/auth';
-import { DriverType } from '../../../lib/statusPermissions';
+import { DriverType, COD_CASH_COLLECTED_STATUS_ID, DELIVERED_STATUS_ID } from '../../../lib/statusPermissions';
+import { 
+  parseCODFromSpecialInstruction, 
+  validateStatusSelection,
+  CODInfo,
+} from '../../../lib/statusHelpers';
+import { saveStatusPOD, saveStatusNote, saveCODRecord } from '../../../lib/bookingNotesApi';
+import { getAuthUser } from '../../../lib/supabase';
+import { CompressedImage } from '../../../lib/imageCompression';
 import BarcodeScanner from '../../../components/BarcodeScanner';
 import StatusSelector from '../../../components/StatusSelector';
 import LoadingIndicator from '../../../components/LoadingIndicator';
+import CallConfirmationModal from '../../../components/CallConfirmationModal';
+import ReasonInputModal from '../../../components/ReasonInputModal';
+import CODConfirmationModal from '../../../components/CODConfirmationModal';
+import StatusPhotoCapture from '../../../components/StatusPhotoCapture';
 
 export default function SingleScanScreen() {
   const router = useRouter();
@@ -29,6 +41,22 @@ export default function SingleScanScreen() {
   const [selectedStatus, setSelectedStatus] = useState<Status | null>(null);
   const [showStatusSelector, setShowStatusSelector] = useState(false);
   const [driverTypes, setDriverTypes] = useState<DriverType[]>([]);
+
+  const [showCallConfirmation, setShowCallConfirmation] = useState(false);
+  const [showReasonInput, setShowReasonInput] = useState(false);
+  const [showCODConfirmation, setShowCODConfirmation] = useState(false);
+  const [showPhotoCapture, setShowPhotoCapture] = useState(false);
+  
+  const [pendingStatus, setPendingStatus] = useState<Status | null>(null);
+  const [pendingRequirements, setPendingRequirements] = useState<{
+    callRequired: boolean;
+    photoRequired: boolean;
+    reasonRequired: boolean;
+    twoStep: boolean;
+  } | null>(null);
+  const [callConfirmed, setCallConfirmed] = useState(false);
+  const [capturedPhotos, setCapturedPhotos] = useState<CompressedImage[]>([]);
+  const [codInfo, setCodInfo] = useState<CODInfo | null>(null);
 
   useEffect(() => {
     loadInitialData();
@@ -87,7 +115,14 @@ export default function SingleScanScreen() {
       return;
     }
 
-    setBooking(result.booking!);
+    const bookingData = result.booking!;
+    setBooking(bookingData);
+    
+    if (bookingData.special_instruction) {
+      const cod = parseCODFromSpecialInstruction(bookingData.special_instruction);
+      setCodInfo(cod);
+    }
+
     setShowStatusSelector(true);
     setScanning(false);
     setLoading(false);
@@ -101,6 +136,209 @@ export default function SingleScanScreen() {
   const handleManualSearch = async (barcode: string) => {
     setScanning(false);
     await handleSearch(barcode);
+  };
+
+  const handleStatusRequirementCheck = async (
+    status: Status, 
+    requirements: { callRequired: boolean; photoRequired: boolean; reasonRequired: boolean; twoStep: boolean }
+  ) => {
+    if (!booking) return;
+
+    const validation = await validateStatusSelection(booking.booking_id, status.status_id, booking);
+    
+    if (!validation.allowed) {
+      Alert.alert('Cannot Use This Status', validation.error || 'Status not allowed', [
+        { text: 'OK' },
+        ...(validation.suggestedStatusId ? [{
+          text: 'Use Suggested Status',
+          onPress: () => {
+            const suggested = statuses.find(s => s.status_id === validation.suggestedStatusId);
+            if (suggested) {
+              handleStatusSelect(suggested);
+            }
+          }
+        }] : [])
+      ]);
+      return;
+    }
+
+    setPendingStatus(status);
+    setPendingRequirements(requirements);
+    setCallConfirmed(false);
+    setCapturedPhotos([]);
+
+    if (requirements.twoStep) {
+      setShowCODConfirmation(true);
+    } else if (requirements.callRequired) {
+      setShowCallConfirmation(true);
+    } else if (requirements.reasonRequired) {
+      setShowReasonInput(true);
+    } else if (requirements.photoRequired) {
+      setShowPhotoCapture(true);
+    }
+  };
+
+  const handleCallConfirmed = () => {
+    setShowCallConfirmation(false);
+    setCallConfirmed(true);
+    
+    if (pendingRequirements?.photoRequired) {
+      setShowPhotoCapture(true);
+    } else if (pendingRequirements?.reasonRequired) {
+      setShowReasonInput(true);
+    } else if (pendingStatus) {
+      proceedWithStatusUpdate(pendingStatus);
+    }
+  };
+
+  const handlePhotoCaptured = (photos: CompressedImage[]) => {
+    setShowPhotoCapture(false);
+    setCapturedPhotos(photos);
+    
+    if (pendingStatus) {
+      proceedWithStatusUpdate(pendingStatus, photos);
+    }
+  };
+
+  const handleReasonSubmitted = async (reason: string, piecesMissing?: number) => {
+    setShowReasonInput(false);
+    
+    if (!pendingStatus || !booking) return;
+
+    setLoading(true);
+
+    try {
+      const user = await getAuthUser();
+      if (!user) {
+        Alert.alert('Error', 'Not authenticated');
+        setLoading(false);
+        return;
+      }
+
+      await saveStatusNote({
+        booking_id: booking.booking_id,
+        miles_ref: booking.miles_ref,
+        status_id: pendingStatus.status_id,
+        reason,
+        pieces_missing: piecesMissing,
+        captured_by: user.id,
+      });
+
+      await proceedWithStatusUpdate(pendingStatus, undefined, reason);
+    } catch (error) {
+      console.error('Error saving reason:', error);
+      Alert.alert('Error', 'Failed to save reason');
+      setLoading(false);
+    }
+  };
+
+  const handleCODConfirmed = async (
+    collectedAmount: number, 
+    paymentType: 'cash' | 'online', 
+    photo?: CompressedImage
+  ) => {
+    setShowCODConfirmation(false);
+    
+    if (!pendingStatus || !booking) return;
+
+    setLoading(true);
+
+    try {
+      const user = await getAuthUser();
+      if (!user) {
+        Alert.alert('Error', 'Not authenticated');
+        setLoading(false);
+        return;
+      }
+
+      const codRecord: any = {
+        booking_id: booking.booking_id,
+        miles_ref: booking.miles_ref,
+        expected_amount: codInfo?.amount || undefined,
+        collected_amount: collectedAmount,
+        currency: codInfo?.currency || 'EUR',
+        payment_type: paymentType,
+        captured_by: user.id,
+      };
+
+      if (paymentType === 'online' && photo) {
+        codRecord.photo = photo;
+      }
+
+      await saveCODRecord(codRecord);
+      await proceedWithStatusUpdate(pendingStatus);
+      
+      Alert.alert(
+        'COD Recorded',
+        'Cash collection recorded. Now scan again and select "Delivered" to complete.',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Error saving COD record:', error);
+      Alert.alert('Error', 'Failed to save COD record');
+      setLoading(false);
+    }
+  };
+
+  const proceedWithStatusUpdate = async (
+    status: Status, 
+    photos?: CompressedImage[],
+    reason?: string
+  ) => {
+    if (!booking) return;
+
+    if (status.need_customer_confirmation) {
+      router.push({
+        pathname: '/(dashboard)/bookings/signature',
+        params: {
+          booking_id: booking.booking_id,
+          status_id: status.status_id,
+          mode: 'single',
+          miles_ref: booking.miles_ref,
+        },
+      });
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const user = await getAuthUser();
+
+      if (photos && photos.length > 0 && user) {
+        await saveStatusPOD({
+          booking_id: booking.booking_id,
+          miles_ref: booking.miles_ref,
+          status_id: status.status_id,
+          photos,
+          captured_by: user.id,
+        });
+      }
+
+      const now = new Date();
+      const delivered_date = now.toISOString().split('T')[0];
+      const delivered_time = now.toTimeString().split(' ')[0];
+
+      const result = await updateBooking({
+        booking_id: booking.booking_id,
+        status_id: status.status_id,
+        delivered_date,
+        delivered_time,
+        reason,
+      });
+
+      setLoading(false);
+
+      if (result.success) {
+        router.back();
+      } else {
+        Alert.alert('Error', result.error || 'Update failed');
+      }
+    } catch (error) {
+      console.error('Error updating booking:', error);
+      setLoading(false);
+      Alert.alert('Error', 'Failed to update booking');
+    }
   };
 
   const handleStatusSelect = (status: Status) => {
@@ -149,6 +387,11 @@ export default function SingleScanScreen() {
     setSelectedStatus(null);
     setShowStatusSelector(false);
     setScanning(true);
+    setPendingStatus(null);
+    setPendingRequirements(null);
+    setCallConfirmed(false);
+    setCapturedPhotos([]);
+    setCodInfo(null);
   };
 
   if (loading) {
@@ -183,12 +426,35 @@ export default function SingleScanScreen() {
                 </Text>
                 <Text style={[
                   styles.bookingStatus,
-                  booking.status.status_id === 10 && styles.deliveredStatus
+                  booking.status.status_id === DELIVERED_STATUS_ID && styles.deliveredStatus
                 ]}>
                   {booking.status.name}
                 </Text>
               </View>
             </View>
+            
+            {codInfo?.hasCOD && (
+              <View style={styles.codBanner}>
+                <Ionicons name="cash" size={20} color="#92400e" />
+                <View style={styles.codBannerContent}>
+                  <Text style={styles.codBannerTitle}>COD Required</Text>
+                  {codInfo.amount && (
+                    <Text style={styles.codBannerAmount}>
+                      {codInfo.currency} {codInfo.amount.toFixed(2)}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {booking.special_instruction && (
+              <View style={styles.specialInstructionBox}>
+                <Ionicons name="information-circle" size={16} color={colors.warning} />
+                <Text style={styles.specialInstructionText} numberOfLines={3}>
+                  {booking.special_instruction}
+                </Text>
+              </View>
+            )}
           </View>
 
           {driverTypes.length > 0 && (
@@ -207,10 +473,59 @@ export default function SingleScanScreen() {
               driverTypes={driverTypes}
               currentStatusId={booking.status.status_id}
               onSelect={handleStatusSelect}
+              onStatusRequirementCheck={handleStatusRequirementCheck}
             />
           </View>
         </ScrollView>
       )}
+
+      <CallConfirmationModal
+        visible={showCallConfirmation}
+        statusName={pendingStatus?.name || ''}
+        onConfirm={handleCallConfirmed}
+        onCancel={() => {
+          setShowCallConfirmation(false);
+          setPendingStatus(null);
+          setPendingRequirements(null);
+        }}
+      />
+
+      <ReasonInputModal
+        visible={showReasonInput}
+        statusId={pendingStatus?.status_id || 0}
+        statusName={pendingStatus?.name || ''}
+        onSubmit={handleReasonSubmitted}
+        onCancel={() => {
+          setShowReasonInput(false);
+          setPendingStatus(null);
+          setPendingRequirements(null);
+        }}
+      />
+
+      {codInfo && (
+        <CODConfirmationModal
+          visible={showCODConfirmation}
+          codInfo={codInfo}
+          onConfirm={handleCODConfirmed}
+          onCancel={() => {
+            setShowCODConfirmation(false);
+            setPendingStatus(null);
+            setPendingRequirements(null);
+          }}
+        />
+      )}
+
+      <StatusPhotoCapture
+        visible={showPhotoCapture}
+        statusId={pendingStatus?.status_id || 0}
+        statusName={pendingStatus?.name || ''}
+        onComplete={handlePhotoCaptured}
+        onCancel={() => {
+          setShowPhotoCapture(false);
+          setPendingStatus(null);
+          setPendingRequirements(null);
+        }}
+      />
     </View>
   );
 }
@@ -264,6 +579,44 @@ const styles = StyleSheet.create({
   deliveredStatus: {
     color: colors.success,
     fontWeight: '700',
+  },
+  codBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef3c7',
+    padding: layouts.spacing.md,
+    borderRadius: layouts.borderRadius.md,
+    marginTop: layouts.spacing.md,
+    gap: layouts.spacing.sm,
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+  },
+  codBannerContent: {
+    flex: 1,
+  },
+  codBannerTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#92400e',
+  },
+  codBannerAmount: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#92400e',
+  },
+  specialInstructionBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.gray100,
+    padding: layouts.spacing.sm,
+    borderRadius: layouts.borderRadius.md,
+    marginTop: layouts.spacing.md,
+    gap: layouts.spacing.sm,
+  },
+  specialInstructionText: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.textLight,
   },
   sectionTitle: {
     fontSize: 16,

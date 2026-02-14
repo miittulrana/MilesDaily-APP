@@ -4,20 +4,39 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/Colors';
 import { layouts } from '../constants/layouts';
 import { Status } from '../lib/bizhandleTypes';
-import { DriverType, getStatusesForDriverTypes, isWarehouseScanStatus } from '../lib/statusPermissions';
+import { 
+  DriverType, 
+  getStatusesForDriverTypes, 
+  isWarehouseScanStatus,
+  DELIVERED_STATUS_ID,
+  isCallRequired,
+  isPhotoRequired,
+  isReasonRequired,
+  isTwoStepStatus,
+} from '../lib/statusPermissions';
 import { checkWarehouseLocation } from '../lib/geofenceService';
 import { ensureConnection, withRetry } from '../lib/supabase';
-
-const DELIVERED_STATUS_ID = 10;
 
 interface StatusSelectorProps {
   statuses: Status[];
   driverTypes?: DriverType[];
   currentStatusId?: number;
   onSelect: (status: Status) => void;
+  onStatusRequirementCheck?: (status: Status, requirements: {
+    callRequired: boolean;
+    photoRequired: boolean;
+    reasonRequired: boolean;
+    twoStep: boolean;
+  }) => void;
 }
 
-export default function StatusSelector({ statuses, driverTypes = [], currentStatusId, onSelect }: StatusSelectorProps) {
+export default function StatusSelector({ 
+  statuses, 
+  driverTypes = [], 
+  currentStatusId, 
+  onSelect,
+  onStatusRequirementCheck,
+}: StatusSelectorProps) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [checkingLocation, setCheckingLocation] = useState(false);
 
@@ -92,6 +111,24 @@ export default function StatusSelector({ statuses, driverTypes = [], currentStat
       setCheckingLocation(false);
     }
 
+    const requirements = {
+      callRequired: isCallRequired(status.status_id),
+      photoRequired: isPhotoRequired(status.status_id),
+      reasonRequired: isReasonRequired(status.status_id),
+      twoStep: isTwoStepStatus(status.status_id),
+    };
+
+    const hasSpecialRequirements = 
+      requirements.callRequired || 
+      requirements.photoRequired || 
+      requirements.reasonRequired || 
+      requirements.twoStep;
+
+    if (hasSpecialRequirements && onStatusRequirementCheck) {
+      onStatusRequirementCheck(status, requirements);
+      return;
+    }
+
     setSelectedId(status.status_id);
     onSelect(status);
   };
@@ -100,6 +137,11 @@ export default function StatusSelector({ statuses, driverTypes = [], currentStat
     const isSelected = selectedId === item.status_id;
     const isWarehouseScan = isWarehouseScanStatus(item.status_id);
     const isDisabled = isAlreadyDelivered;
+    
+    const callRequired = isCallRequired(item.status_id);
+    const photoRequired = isPhotoRequired(item.status_id);
+    const reasonRequired = isReasonRequired(item.status_id);
+    const twoStep = isTwoStepStatus(item.status_id);
 
     return (
       <TouchableOpacity
@@ -131,16 +173,39 @@ export default function StatusSelector({ statuses, driverTypes = [], currentStat
           ]} numberOfLines={2}>
             {item.name}
           </Text>
-          {item.need_customer_confirmation && (
-            <View style={[styles.badge, isDisabled && styles.badgeDisabled]}>
-              <Ionicons name="document-text-outline" size={12} color={colors.background} />
-            </View>
-          )}
-          {isWarehouseScan && (
-            <View style={[styles.geofenceBadge, isDisabled && styles.badgeDisabled]}>
-              <Ionicons name="location" size={12} color={colors.background} />
-            </View>
-          )}
+          
+          <View style={styles.badgeContainer}>
+            {item.need_customer_confirmation && (
+              <View style={[styles.badge, styles.signatureBadge, isDisabled && styles.badgeDisabled]}>
+                <Ionicons name="document-text-outline" size={10} color={colors.background} />
+              </View>
+            )}
+            {isWarehouseScan && (
+              <View style={[styles.badge, styles.geofenceBadge, isDisabled && styles.badgeDisabled]}>
+                <Ionicons name="location" size={10} color={colors.background} />
+              </View>
+            )}
+            {callRequired && (
+              <View style={[styles.badge, styles.callBadge, isDisabled && styles.badgeDisabled]}>
+                <Ionicons name="call" size={10} color={colors.background} />
+              </View>
+            )}
+            {photoRequired && (
+              <View style={[styles.badge, styles.photoBadge, isDisabled && styles.badgeDisabled]}>
+                <Ionicons name="camera" size={10} color={colors.background} />
+              </View>
+            )}
+            {reasonRequired && (
+              <View style={[styles.badge, styles.reasonBadge, isDisabled && styles.badgeDisabled]}>
+                <Ionicons name="create" size={10} color={colors.background} />
+              </View>
+            )}
+            {twoStep && (
+              <View style={[styles.badge, styles.twoStepBadge, isDisabled && styles.badgeDisabled]}>
+                <Ionicons name="cash" size={10} color={colors.background} />
+              </View>
+            )}
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -174,6 +239,34 @@ export default function StatusSelector({ statuses, driverTypes = [], currentStat
           </Text>
         </View>
       )}
+      
+      <View style={styles.legendContainer}>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendBadge, styles.callBadge]}>
+            <Ionicons name="call" size={10} color={colors.background} />
+          </View>
+          <Text style={styles.legendText}>Call First</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendBadge, styles.photoBadge]}>
+            <Ionicons name="camera" size={10} color={colors.background} />
+          </View>
+          <Text style={styles.legendText}>Photo</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendBadge, styles.reasonBadge]}>
+            <Ionicons name="create" size={10} color={colors.background} />
+          </View>
+          <Text style={styles.legendText}>Reason</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendBadge, styles.twoStepBadge]}>
+            <Ionicons name="cash" size={10} color={colors.background} />
+          </View>
+          <Text style={styles.legendText}>COD</Text>
+        </View>
+      </View>
+
       <FlatList
         data={filteredStatuses}
         renderItem={renderItem}
@@ -206,6 +299,7 @@ const getStatusIcon = (statusName: string): any => {
   if (name.includes('closed')) return 'lock-closed-outline';
   if (name.includes('wrong') || name.includes('packaging')) return 'warning-outline';
   if (name.includes('received') || name.includes('facility')) return 'home-outline';
+  if (name.includes('partial')) return 'pie-chart-outline';
 
   return 'ellipse-outline';
 };
@@ -255,7 +349,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray200,
   },
   statusText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: colors.text,
     textAlign: 'center',
@@ -266,27 +360,37 @@ const styles = StyleSheet.create({
   statusTextDisabled: {
     color: colors.gray400,
   },
-  badge: {
+  badgeContainer: {
     position: 'absolute',
     top: -8,
     right: -8,
-    backgroundColor: colors.info,
+    flexDirection: 'row',
+    gap: 2,
+  },
+  badge: {
     borderRadius: layouts.borderRadius.full,
-    width: 20,
-    height: 20,
+    width: 18,
+    height: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  signatureBadge: {
+    backgroundColor: colors.info,
+  },
   geofenceBadge: {
-    position: 'absolute',
-    top: -8,
-    left: -8,
     backgroundColor: colors.warning,
-    borderRadius: layouts.borderRadius.full,
-    width: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+  },
+  callBadge: {
+    backgroundColor: '#8b5cf6',
+  },
+  photoBadge: {
+    backgroundColor: '#06b6d4',
+  },
+  reasonBadge: {
+    backgroundColor: '#f97316',
+  },
+  twoStepBadge: {
+    backgroundColor: colors.success,
   },
   badgeDisabled: {
     backgroundColor: colors.gray400,
@@ -328,5 +432,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.success,
+  },
+  legendContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: layouts.spacing.md,
+    marginBottom: layouts.spacing.md,
+    padding: layouts.spacing.sm,
+    backgroundColor: colors.gray100,
+    borderRadius: layouts.borderRadius.md,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: layouts.spacing.xs,
+  },
+  legendBadge: {
+    borderRadius: layouts.borderRadius.full,
+    width: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  legendText: {
+    fontSize: 11,
+    color: colors.textLight,
   },
 });

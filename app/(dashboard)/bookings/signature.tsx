@@ -1,189 +1,193 @@
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   Alert,
   TouchableOpacity,
+  TextInput,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  Image,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import SignatureScreen, { SignatureViewRef } from 'react-native-signature-canvas';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { updateBooking } from '../../../lib/bizhandleApi';
 import { savePOD } from '../../../lib/podStorage';
-import { getAuthUser, ensureConnection } from '../../../lib/supabase';
-import FormInput from '../../../components/FormInput';
-import SignatureCanvas from '../../../components/SignatureCanvas';
-import PhotoCapture from '../../../components/PhotoCapture';
-import PhotoGallery from '../../../components/PhotoGallery';
+import { getAuthUser } from '../../../lib/supabase';
+import { compressImage, CompressedImage } from '../../../lib/imageCompression';
 import LoadingIndicator from '../../../components/LoadingIndicator';
-import { CompressedImage } from '../../../lib/imageCompression';
+import {
+  DELIVERED_STATUS_ID,
+  PICKED_UP_STATUS_ID,
+  STATUS_NAMES,
+} from '../../../lib/statusPermissions';
 
-export default function SignatureScreen() {
+type Step = 'info' | 'photos' | 'signature';
+
+export default function SignatureScreen_() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const signatureRef = useRef<SignatureViewRef>(null);
+  const [permission, requestPermission] = useCameraPermissions();
+
+  const [step, setStep] = useState<Step>('info');
   const [loading, setLoading] = useState(false);
   const [clientName, setClientName] = useState('');
   const [idCard, setIdCard] = useState('');
   const [signature, setSignature] = useState<string | null>(null);
   const [photos, setPhotos] = useState<CompressedImage[]>([]);
-  const [step, setStep] = useState<'photo' | 'details'>('photo');
+  const [cameraRef, setCameraRef] = useState<any>(null);
+  const [capturing, setCapturing] = useState(false);
 
-  const handlePhotosCapture = (capturedPhotos: CompressedImage[]) => {
-    setPhotos(capturedPhotos);
-  };
+  const bookingId = params.booking_id as string;
+  const bookingIds = params.booking_ids as string;
+  const statusId = parseInt(params.status_id as string);
+  const mode = params.mode as 'single' | 'bulk';
+  const milesRef = params.miles_ref as string;
+  const milesRefs = params.miles_refs as string;
 
-  const handleContinueToDetails = () => {
-    if (photos.length === 0) {
-      Alert.alert('Required', 'Please capture at least one photo for POD');
-      return;
+  const isBulkMode = mode === 'bulk';
+  const bookingIdList = isBulkMode ? bookingIds.split(',').map(id => parseInt(id)) : [parseInt(bookingId)];
+  const milesRefList = isBulkMode ? milesRefs.split(',') : [milesRef];
+
+  const statusName = STATUS_NAMES[statusId] || `Status ${statusId}`;
+  const isDelivered = statusId === DELIVERED_STATUS_ID;
+  const isPickedUp = statusId === PICKED_UP_STATUS_ID;
+
+  const getStepTitle = () => {
+    switch (step) {
+      case 'info':
+        return 'Customer Information';
+      case 'photos':
+        return 'Take Photos';
+      case 'signature':
+        return 'Customer Signature';
+      default:
+        return '';
     }
-    setStep('details');
   };
 
-  const showConnectionError = () => {
-    Alert.alert(
-      'Connection Error',
-      'Unable to connect to server after multiple attempts. Kindly close the app completely and open again, then rescan your booking.',
-      [
-        {
-          text: 'OK',
-          onPress: () => {
-            router.back();
-            router.back();
-          }
-        }
-      ]
-    );
-  };
-
-  const handleUpdate = async () => {
-    console.log('=== HANDLE UPDATE STARTED ===');
-    console.log('Client Name:', clientName);
-    console.log('ID Card:', idCard);
-    console.log('Signature exists:', !!signature);
-    console.log('Photos count:', photos.length);
-
-    if (!clientName || !idCard || !signature) {
-      Alert.alert('Required', 'Please fill in all fields and add signature');
-      return;
+  const getStepDescription = () => {
+    if (isDelivered) {
+      switch (step) {
+        case 'info':
+          return 'Enter the customer details who is receiving the parcel';
+        case 'photos':
+          return 'Take photos of the delivered parcel(s)';
+        case 'signature':
+          return 'Get customer signature to confirm delivery';
+        default:
+          return '';
+      }
+    } else if (isPickedUp) {
+      switch (step) {
+        case 'info':
+          return 'Enter details of person handing over the parcel';
+        case 'photos':
+          return 'Take photos of the parcel(s) being picked up';
+        case 'signature':
+          return 'Get signature to confirm pickup';
+        default:
+          return '';
+      }
     }
+    return '';
+  };
 
-    if (photos.length === 0) {
-      Alert.alert('Required', 'Please capture at least one photo for POD');
+  const handleNextStep = () => {
+    if (step === 'info') {
+      if (!clientName.trim()) {
+        Alert.alert('Required', 'Please enter the client name');
+        return;
+      }
+      setStep('photos');
+    } else if (step === 'photos') {
+      if (photos.length === 0) {
+        Alert.alert('Required', 'Please take at least one photo');
+        return;
+      }
+      setStep('signature');
+    }
+  };
+
+  const handlePrevStep = () => {
+    if (step === 'photos') {
+      setStep('info');
+    } else if (step === 'signature') {
+      setStep('photos');
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    if (!cameraRef || capturing || photos.length >= 5) return;
+
+    try {
+      setCapturing(true);
+      const photoResult = await cameraRef.takePictureAsync({ quality: 0.8 });
+      const compressed = await compressImage(photoResult.uri);
+      setPhotos(prev => [...prev, compressed]);
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'Failed to capture photo');
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    setPhotos(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSignatureOK = (sig: string) => {
+    setSignature(sig);
+  };
+
+  const handleSignatureClear = () => {
+    signatureRef.current?.clearSignature();
+    setSignature(null);
+  };
+
+  const handleSignatureEmpty = () => {
+    setSignature(null);
+  };
+
+  const handleComplete = async () => {
+    if (!signature) {
+      Alert.alert('Required', 'Please get the customer signature');
       return;
     }
 
     setLoading(true);
 
-    const now = new Date();
-    const delivered_date = now.toISOString().split('T')[0];
-    const delivered_time = now.toTimeString().split(' ')[0];
-
-    console.log('Delivered date:', delivered_date);
-    console.log('Delivered time:', delivered_time);
-
     try {
-      const isConnected = await ensureConnection();
-      if (!isConnected) {
-        setLoading(false);
-        showConnectionError();
-        return;
-      }
-
-      console.log('Getting authenticated user with retry...');
-
-      let user = null;
-      try {
-        user = await getAuthUser();
-      } catch (authError) {
-        console.error('Auth error after retries:', authError);
-        setLoading(false);
-        showConnectionError();
-        return;
-      }
-
-      console.log('User ID:', user?.id);
-
+      const user = await getAuthUser();
       if (!user) {
-        console.error('ERROR: No authenticated user');
+        Alert.alert('Error', 'Not authenticated');
         setLoading(false);
-        Alert.alert(
-          'Session Expired',
-          'Your session has expired. Kindly close the app and login again.',
-          [{ text: 'OK', onPress: () => router.replace('/(auth)/login') }]
-        );
         return;
       }
 
-      if (params.mode === 'single') {
-        console.log('=== SINGLE MODE UPDATE ===');
-        console.log('Booking ID:', params.booking_id);
-        console.log('Status ID:', params.status_id);
-        console.log('Miles Ref:', params.miles_ref);
+      const now = new Date();
+      const delivered_date = now.toISOString().split('T')[0];
+      const delivered_time = now.toTimeString().split(' ')[0];
 
-        console.log('Calling BizHandle API...');
-        const result = await updateBooking({
-          booking_id: Number(params.booking_id),
-          status_id: Number(params.status_id),
-          delivered_date,
-          delivered_time,
-          client_name: clientName,
-          id_card: idCard,
-          signature: `data:image/png;base64,${signature}`,
-        });
-        console.log('BizHandle API result:', result);
+      let successCount = 0;
+      let failedBookings: string[] = [];
 
-        console.log('Saving POD in background...');
-        savePOD({
-          booking_id: Number(params.booking_id),
-          miles_ref: params.miles_ref as string || '',
-          photos: photos,
-          client_name: clientName,
-          id_card: idCard,
-          signature_base64: signature,
-          delivered_date,
-          delivered_time,
-          captured_by: user.id,
-        }).then((podResult) => {
-          console.log('POD save completed successfully:', podResult);
-        }).catch(err => {
-          console.error('POD SAVE ERROR:', err);
-          console.error('Error details:', JSON.stringify(err, null, 2));
-        });
+      for (let i = 0; i < bookingIdList.length; i++) {
+        const currentBookingId = bookingIdList[i];
+        const currentMilesRef = milesRefList[i];
 
-        setLoading(false);
-
-        if (result.success) {
-          router.back();
-          router.back();
-        } else {
-          if (result.error && (result.error.includes('timeout') || result.error.includes('Timeout') || result.error.includes('Connection'))) {
-            showConnectionError();
-          } else {
-            Alert.alert('Error', result.error || 'Update failed');
-          }
-        }
-      } else {
-        const bookingIds = JSON.parse(params.booking_ids as string);
-        let successCount = 0;
-        let failCount = 0;
-
-        for (const bookingId of bookingIds) {
-          const result = await updateBooking({
-            booking_id: bookingId,
-            status_id: Number(params.status_id),
-            delivered_date,
-            delivered_time,
-            client_name: clientName,
-            id_card: idCard,
-            signature: `data:image/png;base64,${signature}`,
-          });
-
-          savePOD({
-            booking_id: bookingId,
-            miles_ref: params.miles_ref as string || '',
+        try {
+          const podResult = await savePOD({
+            booking_id: currentBookingId,
+            miles_ref: currentMilesRef,
             photos: photos,
             client_name: clientName,
             id_card: idCard,
@@ -191,126 +195,318 @@ export default function SignatureScreen() {
             delivered_date,
             delivered_time,
             captured_by: user.id,
-          }).catch(err => {
-            console.log('POD save failed for booking', bookingId, err);
+            status_id: statusId,
           });
 
-          if (result.success) {
+          if (!podResult.success) {
+            console.error(`POD save failed for ${currentMilesRef}:`, podResult.error);
+          }
+
+          const updateResult = await updateBooking({
+            booking_id: currentBookingId,
+            status_id: statusId,
+            delivered_date,
+            delivered_time,
+            client_name: clientName,
+            id_card: idCard,
+            signature: signature,
+          });
+
+          if (updateResult.success) {
             successCount++;
           } else {
-            failCount++;
+            failedBookings.push(currentMilesRef);
           }
+        } catch (error) {
+          console.error(`Error processing ${currentMilesRef}:`, error);
+          failedBookings.push(currentMilesRef);
         }
-
-        setLoading(false);
-
-        router.back();
-        router.back();
       }
-    } catch (error) {
-      console.error('Update error:', error);
+
       setLoading(false);
 
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('timeout') || errorMessage.includes('Timeout') || errorMessage.includes('network') || errorMessage.includes('Network')) {
-        showConnectionError();
+      if (failedBookings.length === 0) {
+        const message = isBulkMode
+          ? `All ${successCount} bookings updated successfully`
+          : 'Booking updated successfully';
+
+        Alert.alert('Success', message, [
+          { text: 'OK', onPress: () => router.back() }
+        ]);
       } else {
         Alert.alert(
-          'Error',
-          'Failed to update booking. Kindly close the app and try again.',
-          [{ text: 'OK' }]
+          'Partial Success',
+          `${successCount} updated. Failed: ${failedBookings.join(', ')}`,
+          [{ text: 'OK', onPress: () => router.back() }]
         );
       }
+    } catch (error) {
+      console.error('Complete error:', error);
+      setLoading(false);
+      Alert.alert('Error', 'Failed to complete the process');
     }
   };
 
   if (loading) {
-    return <LoadingIndicator fullScreen message="Updating with POD photos..." />;
-  }
-
-  if (step === 'photo') {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Capture POD Photos</Text>
-          <Text style={styles.subtitle}>Take photos of delivered items (1-5 photos required)</Text>
-        </View>
-        <PhotoCapture onPhotosCapture={handlePhotosCapture} maxPhotos={5} />
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={[styles.continueButton, photos.length === 0 && styles.continueButtonDisabled]}
-            onPress={handleContinueToDetails}
-            disabled={photos.length === 0}
-          >
-            <Text style={styles.continueButtonText}>
-              Continue to Customer Details ({photos.length} photos)
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
+    return <LoadingIndicator fullScreen message="Saving..." />;
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <View style={styles.header}>
         <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => setStep('photo')}
+          style={styles.headerBackButton}
+          onPress={() => router.back()}
         >
-          <Text style={styles.backButtonText}>← Back to Photos</Text>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>{statusName}</Text>
+          <Text style={styles.headerSubtitle}>
+            {isBulkMode ? `${bookingIdList.length} bookings` : milesRef}
+          </Text>
+        </View>
+        <View style={styles.headerPlaceholder} />
+      </View>
 
-        <Text style={styles.title}>Customer Details</Text>
-        <Text style={styles.subtitle}>
-          Please collect customer information and signature
-        </Text>
+      <View style={styles.progressContainer}>
+        <View style={styles.progressSteps}>
+          {['info', 'photos', 'signature'].map((s, index) => (
+            <View key={s} style={styles.progressStepWrapper}>
+              <View
+                style={[
+                  styles.progressStep,
+                  step === s && styles.progressStepActive,
+                  (['info', 'photos', 'signature'].indexOf(step) > index) && styles.progressStepCompleted,
+                ]}
+              >
+                {(['info', 'photos', 'signature'].indexOf(step) > index) ? (
+                  <Ionicons name="checkmark" size={16} color={colors.background} />
+                ) : (
+                  <Text style={[
+                    styles.progressStepText,
+                    step === s && styles.progressStepTextActive,
+                  ]}>
+                    {index + 1}
+                  </Text>
+                )}
+              </View>
+              {index < 2 && (
+                <View
+                  style={[
+                    styles.progressLine,
+                    (['info', 'photos', 'signature'].indexOf(step) > index) && styles.progressLineCompleted,
+                  ]}
+                />
+              )}
+            </View>
+          ))}
+        </View>
+        <Text style={styles.stepTitle}>{getStepTitle()}</Text>
+        <Text style={styles.stepDescription}>{getStepDescription()}</Text>
+      </View>
 
-        <PhotoGallery
-          photos={photos}
-          onRemovePhoto={(index) => {
-            const newPhotos = photos.filter((_, i) => i !== index);
-            setPhotos(newPhotos);
-            if (newPhotos.length === 0) {
-              setStep('photo');
-            }
-          }}
-        />
+      {step === 'info' && (
+        <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
+          <View style={styles.formGroup}>
+            <Text style={styles.formLabel}>Client Name *</Text>
+            <TextInput
+              style={styles.formInput}
+              value={clientName}
+              onChangeText={setClientName}
+              placeholder="Enter client name"
+              placeholderTextColor={colors.gray400}
+              autoCapitalize="words"
+            />
+          </View>
 
-        <View style={styles.form}>
-          <FormInput
-            label="Customer Name"
-            placeholder="Enter customer name"
-            value={clientName}
-            onChangeText={setClientName}
-            required
-          />
+          <View style={styles.formGroup}>
+            <Text style={styles.formLabel}>ID Card (Optional)</Text>
+            <TextInput
+              style={styles.formInput}
+              value={idCard}
+              onChangeText={setIdCard}
+              placeholder="Enter ID card number"
+              placeholderTextColor={colors.gray400}
+              autoCapitalize="characters"
+            />
+          </View>
 
-          <FormInput
-            label="ID Card Number"
-            placeholder="Enter ID card number"
-            value={idCard}
-            onChangeText={setIdCard}
-            required
-          />
+          {isBulkMode && (
+            <View style={styles.bulkInfoBox}>
+              <Ionicons name="information-circle" size={20} color={colors.info} />
+              <Text style={styles.bulkInfoText}>
+                This information will be applied to all {bookingIdList.length} bookings
+              </Text>
+            </View>
+          )}
 
-          <View style={styles.signatureSection}>
-            <Text style={styles.signatureLabel}>
-              Customer Signature <Text style={styles.required}>*</Text>
-            </Text>
-            <SignatureCanvas onSignature={setSignature} />
+          <TouchableOpacity
+            style={styles.nextButton}
+            onPress={handleNextStep}
+          >
+            <Text style={styles.nextButtonText}>Next: Take Photos</Text>
+            <Ionicons name="arrow-forward" size={20} color={colors.background} />
+          </TouchableOpacity>
+        </ScrollView>
+      )}
+
+      {step === 'photos' && (
+        <View style={styles.photoStepContainer}>
+          {!permission?.granted ? (
+            <View style={styles.permissionContainer}>
+              <Ionicons name="camera-outline" size={64} color={colors.gray400} />
+              <Text style={styles.permissionText}>Camera permission required</Text>
+              <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+                <Text style={styles.permissionButtonText}>Grant Permission</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <View style={styles.cameraContainer}>
+                <CameraView
+                  style={styles.camera}
+                  facing="back"
+                  ref={(ref) => setCameraRef(ref)}
+                />
+                <View style={styles.cameraOverlay}>
+                  <View style={styles.photoCountBadge}>
+                    <Text style={styles.photoCountText}>{photos.length} / 5</Text>
+                  </View>
+                </View>
+              </View>
+
+              {photos.length > 0 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.photoThumbnails}
+                  contentContainerStyle={styles.photoThumbnailsContent}
+                >
+                  {photos.map((photo, index) => (
+                    <View key={index} style={styles.thumbnailWrapper}>
+                      <Image source={{ uri: photo.uri }} style={styles.thumbnail} />
+                      <TouchableOpacity
+                        style={styles.thumbnailRemove}
+                        onPress={() => handleRemovePhoto(index)}
+                      >
+                        <Ionicons name="close-circle" size={22} color={colors.error} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+
+              <View style={styles.photoControls}>
+                <TouchableOpacity
+                  style={styles.backStepButton}
+                  onPress={handlePrevStep}
+                >
+                  <Ionicons name="arrow-back" size={20} color={colors.text} />
+                  <Text style={styles.backStepButtonText}>Back</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.captureButton,
+                    (capturing || photos.length >= 5) && styles.captureButtonDisabled,
+                  ]}
+                  onPress={handleTakePhoto}
+                  disabled={capturing || photos.length >= 5}
+                >
+                  <View style={styles.captureButtonInner} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.nextStepButton,
+                    photos.length === 0 && styles.nextStepButtonDisabled,
+                  ]}
+                  onPress={handleNextStep}
+                  disabled={photos.length === 0}
+                >
+                  <Text style={styles.nextStepButtonText}>Next</Text>
+                  <Ionicons name="arrow-forward" size={20} color={colors.background} />
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+      )}
+
+      {step === 'signature' && (
+        <View style={styles.signatureStepContainer}>
+          <View style={styles.signatureContainer}>
+            <SignatureScreen
+              ref={signatureRef}
+              onOK={handleSignatureOK}
+              onEmpty={handleSignatureEmpty}
+              onClear={handleSignatureClear}
+              autoClear={false}
+              descriptionText=""
+              clearText="Clear"
+              confirmText="Confirm"
+              webStyle={`
+                .m-signature-pad {
+                  box-shadow: none;
+                  border: none;
+                  margin: 0;
+                  width: 100%;
+                  height: 100%;
+                }
+                .m-signature-pad--body {
+                  border: 2px dashed ${colors.gray300};
+                  border-radius: 12px;
+                }
+                .m-signature-pad--footer {
+                  display: flex;
+                  justify-content: space-between;
+                  padding: 10px;
+                }
+                .m-signature-pad--footer .button {
+                  background-color: ${colors.primary};
+                  color: white;
+                  border: none;
+                  padding: 10px 20px;
+                  border-radius: 8px;
+                  font-size: 14px;
+                  font-weight: 600;
+                }
+                .m-signature-pad--footer .button.clear {
+                  background-color: ${colors.gray300};
+                  color: ${colors.text};
+                }
+              `}
+            />
+          </View>
+
+          <View style={styles.signatureFooter}>
+            <TouchableOpacity
+              style={styles.backStepButton}
+              onPress={handlePrevStep}
+            >
+              <Ionicons name="arrow-back" size={20} color={colors.text} />
+              <Text style={styles.backStepButtonText}>Back</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.completeButton,
+                !signature && styles.completeButtonDisabled,
+              ]}
+              onPress={handleComplete}
+              disabled={!signature}
+            >
+              <Ionicons name="checkmark-circle" size={20} color={colors.background} />
+              <Text style={styles.completeButtonText}>Complete</Text>
+            </TouchableOpacity>
           </View>
         </View>
-
-        <TouchableOpacity
-          style={[styles.submitButton, (!clientName || !idCard || !signature) && styles.submitButtonDisabled]}
-          onPress={handleUpdate}
-          disabled={!clientName || !idCard || !signature}
-        >
-          <Text style={styles.submitButtonText}>Update Booking with POD</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+      )}
+    </KeyboardAvoidingView>
   );
 }
 
@@ -320,75 +516,303 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: layouts.spacing.md,
+    paddingVertical: layouts.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray200,
+  },
+  headerBackButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: colors.textLight,
+  },
+  headerPlaceholder: {
+    width: 40,
+  },
+  progressContainer: {
     padding: layouts.spacing.lg,
+    backgroundColor: colors.gray100,
+    alignItems: 'center',
+  },
+  progressSteps: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: layouts.spacing.md,
+  },
+  progressStepWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progressStep: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.gray300,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  progressStepActive: {
     backgroundColor: colors.primary,
   },
-  content: {
-    padding: layouts.spacing.lg,
+  progressStepCompleted: {
+    backgroundColor: colors.success,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
+  progressStepText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textLight,
+  },
+  progressStepTextActive: {
     color: colors.background,
+  },
+  progressLine: {
+    width: 40,
+    height: 3,
+    backgroundColor: colors.gray300,
+    marginHorizontal: layouts.spacing.xs,
+  },
+  progressLineCompleted: {
+    backgroundColor: colors.success,
+  },
+  stepTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
     marginBottom: layouts.spacing.xs,
   },
-  subtitle: {
+  stepDescription: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
+    color: colors.textLight,
+    textAlign: 'center',
   },
-  footer: {
+  content: {
+    flex: 1,
+    padding: layouts.spacing.lg,
+  },
+  formGroup: {
+    marginBottom: layouts.spacing.lg,
+  },
+  formLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: layouts.spacing.sm,
+  },
+  formInput: {
+    borderWidth: 1,
+    borderColor: colors.gray300,
+    borderRadius: layouts.borderRadius.md,
+    padding: layouts.spacing.md,
+    fontSize: 16,
+    color: colors.text,
+    backgroundColor: colors.background,
+  },
+  bulkInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#dbeafe',
+    padding: layouts.spacing.md,
+    borderRadius: layouts.borderRadius.md,
+    marginBottom: layouts.spacing.lg,
+    gap: layouts.spacing.sm,
+  },
+  bulkInfoText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1e40af',
+  },
+  nextButton: {
+    flexDirection: 'row',
+    backgroundColor: colors.primary,
+    paddingVertical: layouts.spacing.md,
+    borderRadius: layouts.borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: layouts.spacing.sm,
+  },
+  nextButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.background,
+  },
+  photoStepContainer: {
+    flex: 1,
+  },
+  permissionContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: layouts.spacing.xl,
+  },
+  permissionText: {
+    fontSize: 16,
+    color: colors.text,
+    marginTop: layouts.spacing.lg,
+    marginBottom: layouts.spacing.xl,
+  },
+  permissionButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: layouts.spacing.md,
+    paddingHorizontal: layouts.spacing.xl,
+    borderRadius: layouts.borderRadius.md,
+  },
+  permissionButtonText: {
+    color: colors.background,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  cameraContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraOverlay: {
+    position: 'absolute',
+    top: layouts.spacing.md,
+    right: layouts.spacing.md,
+  },
+  photoCountBadge: {
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: layouts.spacing.md,
+    paddingVertical: layouts.spacing.sm,
+    borderRadius: layouts.borderRadius.full,
+  },
+  photoCountText: {
+    color: colors.background,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  photoThumbnails: {
+    maxHeight: 80,
+    backgroundColor: colors.gray100,
+  },
+  photoThumbnailsContent: {
+    padding: layouts.spacing.sm,
+    gap: layouts.spacing.sm,
+  },
+  thumbnailWrapper: {
+    position: 'relative',
+    marginRight: layouts.spacing.sm,
+  },
+  thumbnail: {
+    width: 60,
+    height: 60,
+    borderRadius: layouts.borderRadius.sm,
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  thumbnailRemove: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: colors.background,
+    borderRadius: 11,
+  },
+  photoControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     padding: layouts.spacing.lg,
     backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.gray200,
   },
-  continueButton: {
-    backgroundColor: colors.success,
-    padding: layouts.spacing.md,
-    borderRadius: layouts.borderRadius.md,
+  backStepButton: {
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: layouts.spacing.sm,
+    paddingHorizontal: layouts.spacing.md,
+    gap: layouts.spacing.xs,
   },
-  continueButtonDisabled: {
-    backgroundColor: colors.gray400,
-  },
-  continueButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.background,
-  },
-  backButton: {
-    marginBottom: layouts.spacing.md,
-  },
-  backButtonText: {
+  backStepButtonText: {
     fontSize: 14,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  form: {
-    marginBottom: layouts.spacing.xl,
-  },
-  signatureSection: {
-    marginTop: layouts.spacing.md,
-  },
-  signatureLabel: {
-    fontSize: 16,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: layouts.spacing.sm,
   },
-  required: {
-    color: colors.error,
-  },
-  submitButton: {
-    backgroundColor: colors.primary,
-    padding: layouts.spacing.md,
-    borderRadius: layouts.borderRadius.md,
+  captureButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 4,
+    borderColor: colors.primary,
   },
-  submitButtonDisabled: {
+  captureButtonDisabled: {
+    borderColor: colors.gray400,
+    opacity: 0.5,
+  },
+  captureButtonInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.primary,
+  },
+  nextStepButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: layouts.spacing.sm,
+    paddingHorizontal: layouts.spacing.md,
+    borderRadius: layouts.borderRadius.md,
+    gap: layouts.spacing.xs,
+  },
+  nextStepButtonDisabled: {
     backgroundColor: colors.gray400,
   },
-  submitButtonText: {
+  nextStepButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.background,
+  },
+  signatureStepContainer: {
+    flex: 1,
+  },
+  signatureContainer: {
+    flex: 1,
+    padding: layouts.spacing.md,
+  },
+  signatureFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: layouts.spacing.lg,
+    backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray200,
+  },
+  completeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.success,
+    paddingVertical: layouts.spacing.md,
+    paddingHorizontal: layouts.spacing.xl,
+    borderRadius: layouts.borderRadius.md,
+    gap: layouts.spacing.sm,
+  },
+  completeButtonDisabled: {
+    backgroundColor: colors.gray400,
+  },
+  completeButtonText: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.background,

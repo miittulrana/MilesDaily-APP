@@ -18,7 +18,11 @@ const getCurrentBuildTime = (): string => {
   return now.toISOString().split('T')[0].replace(/-/g, '');
 };
 
-export const findBooking = async (barcode: string) => {
+export const findBooking = async (barcode: string): Promise<{
+  success: boolean;
+  booking?: Booking;
+  error?: string;
+}> => {
   try {
     const token = await getBizhandleToken();
     if (!token) {
@@ -45,7 +49,24 @@ export const findBooking = async (barcode: string) => {
     const data = await response.json();
 
     if (data.status === 200) {
-      return { success: true, booking: data.booking };
+      const bookingData = data.booking;
+      
+      const booking: Booking = {
+        booking_id: bookingData.booking_id,
+        miles_ref: bookingData.miles_ref,
+        hawb: bookingData.hawb,
+        status: {
+          status_id: bookingData.status?.status_id || bookingData.status_id,
+          name: bookingData.status?.name || bookingData.status_name || '',
+          delivered_date_time: bookingData.status?.delivered_date_time,
+        },
+        shipper_address: bookingData.shipper_address || {},
+        consignee_address: bookingData.consignee_address || {},
+        customer: bookingData.customer || {},
+        special_instruction: bookingData.special_instruction || '',
+      };
+
+      return { success: true, booking };
     }
 
     return { success: false, error: data.error || 'Booking not found' };
@@ -55,7 +76,10 @@ export const findBooking = async (barcode: string) => {
   }
 };
 
-export const updateBooking = async (params: UpdateBookingParams) => {
+export const updateBooking = async (params: UpdateBookingParams): Promise<{
+  success: boolean;
+  error?: string;
+}> => {
   try {
     const token = await getBizhandleToken();
     if (!token) {
@@ -68,7 +92,7 @@ export const updateBooking = async (params: UpdateBookingParams) => {
     const formData = new FormData();
     formData.append('booking_id', params.booking_id.toString());
     formData.append('status_id', params.status_id.toString());
-    formData.append('reason', '');
+    formData.append('reason', params.reason || '');
     formData.append('delivered_date', params.delivered_date);
     formData.append('delivered_time', params.delivered_time);
     formData.append('ipaddress', ipaddress);
@@ -117,7 +141,11 @@ export const updateBooking = async (params: UpdateBookingParams) => {
   }
 };
 
-export const getStatuses = async (): Promise<{ success: boolean; statuses?: Status[]; error?: string }> => {
+export const getStatuses = async (): Promise<{
+  success: boolean;
+  statuses?: Status[];
+  error?: string;
+}> => {
   try {
     const token = await getBizhandleToken();
     if (!token) {

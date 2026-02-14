@@ -3,6 +3,7 @@ import { CompressedImage } from './imageCompression';
 import { addToOfflineQueue, getOfflineQueue, removeFromOfflineQueue } from './offlineQueue';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Network from 'expo-network';
+import { DELIVERED_STATUS_ID } from './statusPermissions';
 
 interface PODData {
   booking_id: number;
@@ -14,17 +15,21 @@ interface PODData {
   delivered_date: string;
   delivered_time: string;
   captured_by: string;
+  status_id?: number;
 }
 
 export const uploadPODPhotos = async (
   booking_id: number,
-  photos: CompressedImage[]
+  photos: CompressedImage[],
+  statusId?: number
 ): Promise<string[]> => {
   console.log('=== uploadPODPhotos START ===');
   console.log('Booking ID:', booking_id);
   console.log('Photos to upload:', photos.length);
+  console.log('Status ID:', statusId);
 
   const uploadedUrls: string[] = [];
+  const statusSuffix = statusId ? `_status_${statusId}` : '';
 
   for (let i = 0; i < photos.length; i++) {
     const photo = photos[i];
@@ -33,7 +38,7 @@ export const uploadPODPhotos = async (
     console.log('Photo size:', photo.size);
 
     const timestamp = Date.now();
-    const fileName = `${booking_id}/photo_${timestamp}_${i}.jpg`;
+    const fileName = `${booking_id}/photo${statusSuffix}_${timestamp}_${i}.jpg`;
     console.log('File name:', fileName);
 
     try {
@@ -74,8 +79,6 @@ export const uploadPODPhotos = async (
   console.log('Total photos uploaded:', uploadedUrls.length);
   console.log('URLs:', uploadedUrls);
   return uploadedUrls;
-
-  return uploadedUrls;
 };
 
 const decode = (base64: string): ArrayBuffer => {
@@ -96,7 +99,10 @@ export const savePOD = async (podData: PODData): Promise<{ success: boolean; err
     photos_count: podData.photos.length,
     has_signature: !!podData.signature_base64,
     captured_by: podData.captured_by,
+    status_id: podData.status_id,
   });
+
+  const statusId = podData.status_id || DELIVERED_STATUS_ID;
 
   try {
     console.log('Checking network status...');
@@ -118,7 +124,7 @@ export const savePOD = async (podData: PODData): Promise<{ success: boolean; err
         signature_base64: podData.signature_base64,
         delivered_date: podData.delivered_date,
         delivered_time: podData.delivered_time,
-        status_id: 0,
+        status_id: statusId,
         created_at: new Date().toISOString(),
       });
       console.log('✅ Added to offline queue');
@@ -126,7 +132,7 @@ export const savePOD = async (podData: PODData): Promise<{ success: boolean; err
     }
 
     console.log('✅ ONLINE - Starting photo upload...');
-    const photoUrls = await uploadPODPhotos(podData.booking_id, podData.photos);
+    const photoUrls = await uploadPODPhotos(podData.booking_id, podData.photos, statusId);
     console.log('✅ Photos uploaded successfully, URLs count:', photoUrls.length);
 
     console.log('Inserting POD record into biz_booking_pods table...');
@@ -135,6 +141,7 @@ export const savePOD = async (podData: PODData): Promise<{ success: boolean; err
       .insert({
         booking_id: podData.booking_id,
         miles_ref: podData.miles_ref,
+        status_id: statusId,
         photo_urls: photoUrls,
         client_name: podData.client_name,
         id_card: podData.id_card,
@@ -172,7 +179,7 @@ export const savePOD = async (podData: PODData): Promise<{ success: boolean; err
       signature_base64: podData.signature_base64,
       delivered_date: podData.delivered_date,
       delivered_time: podData.delivered_time,
-      status_id: 0,
+      status_id: statusId,
       created_at: new Date().toISOString(),
     });
     console.log('✅ Added to offline queue');
@@ -199,13 +206,15 @@ export const syncOfflinePODs = async (): Promise<void> => {
           continue;
         }
 
-        const photoUrls = await uploadPODPhotos(pod.booking_id, pod.photos);
+        const statusId = pod.status_id || DELIVERED_STATUS_ID;
+        const photoUrls = await uploadPODPhotos(pod.booking_id, pod.photos, statusId);
 
         const { error } = await supabase
           .from('biz_booking_pods')
           .insert({
             booking_id: pod.booking_id,
             miles_ref: pod.miles_ref,
+            status_id: statusId,
             photo_urls: photoUrls,
             client_name: pod.client_name,
             id_card: pod.id_card,
