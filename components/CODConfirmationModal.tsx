@@ -7,10 +7,11 @@ import {
     TouchableOpacity,
     SafeAreaView,
     TextInput,
-    KeyboardAvoidingView,
-    Platform,
+    ScrollView,
     Image,
     Alert,
+    TouchableWithoutFeedback,
+    Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -36,7 +37,6 @@ export default function CODConfirmationModal({
 }: CODConfirmationModalProps) {
     const [permission, requestPermission] = useCameraPermissions();
     const [step, setStep] = useState<Step>('confirm');
-    const [paymentType, setPaymentType] = useState<'cash' | 'online'>('cash');
     const [collectedAmount, setCollectedAmount] = useState('');
     const [photo, setPhoto] = useState<CompressedImage | null>(null);
     const [cameraRef, setCameraRef] = useState<any>(null);
@@ -44,9 +44,19 @@ export default function CODConfirmationModal({
 
     useEffect(() => {
         if (visible && codInfo.amount) {
-            setCollectedAmount(codInfo.amount.toString());
+            setCollectedAmount(codInfo.amount.toFixed(2));
+        } else if (visible) {
+            setCollectedAmount('');
         }
     }, [visible, codInfo.amount]);
+
+    useEffect(() => {
+        if (!visible) {
+            setStep('confirm');
+            setPhoto(null);
+            setCollectedAmount('');
+        }
+    }, [visible]);
 
     const handleConfirmCash = () => {
         const amount = parseFloat(collectedAmount);
@@ -55,7 +65,6 @@ export default function CODConfirmationModal({
             return;
         }
         onConfirm(amount, 'cash');
-        resetState();
     };
 
     const handleSelectOnline = () => {
@@ -64,7 +73,6 @@ export default function CODConfirmationModal({
             Alert.alert('Invalid Amount', 'Please enter a valid amount');
             return;
         }
-        setPaymentType('online');
         setStep('camera');
     };
 
@@ -91,18 +99,12 @@ export default function CODConfirmationModal({
         }
         const amount = parseFloat(collectedAmount);
         onConfirm(amount, 'online', photo);
-        resetState();
     };
 
-    const resetState = () => {
+    const handleClose = () => {
         setStep('confirm');
-        setPaymentType('cash');
-        setCollectedAmount('');
         setPhoto(null);
-    };
-
-    const handleCancel = () => {
-        resetState();
+        setCollectedAmount('');
         onCancel();
     };
 
@@ -110,19 +112,27 @@ export default function CODConfirmationModal({
         setPhoto(null);
     };
 
+    const dismissKeyboard = () => {
+        Keyboard.dismiss();
+    };
+
     if (step === 'camera') {
         if (!permission?.granted) {
             return (
-                <Modal visible={visible} animationType="slide" onRequestClose={handleCancel}>
+                <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
                     <SafeAreaView style={styles.cameraContainer}>
+                        <View style={styles.cameraHeader}>
+                            <TouchableOpacity onPress={() => setStep('confirm')} style={styles.headerCloseButton}>
+                                <Ionicons name="arrow-back" size={24} color={colors.text} />
+                            </TouchableOpacity>
+                            <Text style={styles.cameraTitle}>Photo of Payment Proof</Text>
+                            <View style={{ width: 40 }} />
+                        </View>
                         <View style={styles.permissionContainer}>
                             <Ionicons name="camera-outline" size={64} color={colors.gray400} />
                             <Text style={styles.permissionText}>Camera permission required for payment proof</Text>
                             <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
                                 <Text style={styles.permissionButtonText}>Grant Permission</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.backButton} onPress={() => setStep('confirm')}>
-                                <Text style={styles.backButtonText}>Go Back</Text>
                             </TouchableOpacity>
                         </View>
                     </SafeAreaView>
@@ -131,14 +141,16 @@ export default function CODConfirmationModal({
         }
 
         return (
-            <Modal visible={visible} animationType="slide" onRequestClose={handleCancel}>
+            <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
                 <SafeAreaView style={styles.cameraContainer}>
                     <View style={styles.cameraHeader}>
-                        <TouchableOpacity onPress={() => setStep('confirm')}>
+                        <TouchableOpacity onPress={() => setStep('confirm')} style={styles.headerCloseButton}>
                             <Ionicons name="arrow-back" size={24} color={colors.text} />
                         </TouchableOpacity>
                         <Text style={styles.cameraTitle}>Photo of Payment Proof</Text>
-                        <View style={{ width: 24 }} />
+                        <TouchableOpacity onPress={handleClose} style={styles.headerCloseButton}>
+                            <Ionicons name="close" size={24} color={colors.text} />
+                        </TouchableOpacity>
                     </View>
 
                     {photo ? (
@@ -185,43 +197,49 @@ export default function CODConfirmationModal({
         <Modal
             visible={visible}
             animationType="slide"
-            transparent={true}
-            onRequestClose={handleCancel}
+            transparent={false}
+            onRequestClose={handleClose}
         >
-            <KeyboardAvoidingView
-                style={styles.overlay}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            >
-                <SafeAreaView style={styles.safeArea}>
-                    <View style={styles.container}>
+            <SafeAreaView style={styles.container}>
+                <TouchableWithoutFeedback onPress={dismissKeyboard}>
+                    <View style={styles.innerContainer}>
                         <View style={styles.header}>
-                            <View style={styles.iconContainer}>
-                                <Ionicons name="cash" size={40} color={colors.success} />
-                            </View>
-                            <Text style={styles.title}>COD / Cash Collected</Text>
+                            <TouchableOpacity onPress={handleClose} style={styles.headerCloseButton}>
+                                <Ionicons name="close" size={28} color={colors.text} />
+                            </TouchableOpacity>
+                            <Text style={styles.headerTitle}>COD / Cash Collected</Text>
+                            <View style={{ width: 40 }} />
                         </View>
 
-                        <View style={styles.content}>
-                            <View style={styles.infoBox}>
-                                <Ionicons name="information-circle" size={20} color={colors.info} />
-                                <Text style={styles.infoText}>
-                                    If "COD Amount" is in special instructions, you CANNOT mark as Delivered until you first use "COD/Cash Collected"
-                                </Text>
+                        <ScrollView 
+                            style={styles.scrollContent} 
+                            contentContainerStyle={styles.scrollContentContainer}
+                            keyboardShouldPersistTaps="handled"
+                        >
+                            <View style={styles.iconContainer}>
+                                <Ionicons name="cash" size={48} color={colors.success} />
                             </View>
 
-                            {codInfo.amount && (
+                            {codInfo.amount && codInfo.amount > 0 && (
                                 <View style={styles.expectedAmountBox}>
-                                    <Text style={styles.expectedLabel}>Expected Amount:</Text>
+                                    <Text style={styles.expectedLabel}>COD Amount to Collect</Text>
                                     <Text style={styles.expectedAmount}>
                                         {codInfo.currency} {codInfo.amount.toFixed(2)}
                                     </Text>
                                 </View>
                             )}
 
+                            <View style={styles.infoBox}>
+                                <Ionicons name="information-circle" size={20} color="#1e40af" />
+                                <Text style={styles.infoText}>
+                                    Confirm the amount collected below. If different from expected, enter the actual amount.
+                                </Text>
+                            </View>
+
                             <View style={styles.inputGroup}>
                                 <Text style={styles.inputLabel}>Amount Collected *</Text>
                                 <View style={styles.amountInputContainer}>
-                                    <Text style={styles.currencyPrefix}>{codInfo.currency}</Text>
+                                    <Text style={styles.currencyPrefix}>{codInfo.currency || 'EUR'}</Text>
                                     <TextInput
                                         style={styles.amountInput}
                                         value={collectedAmount}
@@ -229,23 +247,26 @@ export default function CODConfirmationModal({
                                         placeholder="0.00"
                                         placeholderTextColor={colors.gray400}
                                         keyboardType="decimal-pad"
+                                        returnKeyType="done"
+                                        onSubmitEditing={dismissKeyboard}
                                     />
                                 </View>
                             </View>
 
-                            <Text style={styles.paymentTypeLabel}>Payment Type:</Text>
+                            <Text style={styles.paymentTypeLabel}>How did customer pay?</Text>
 
                             <View style={styles.paymentOptions}>
                                 <TouchableOpacity
                                     style={styles.paymentOption}
                                     onPress={handleConfirmCash}
+                                    activeOpacity={0.7}
                                 >
-                                    <View style={styles.paymentIconContainer}>
-                                        <Ionicons name="cash-outline" size={32} color={colors.success} />
+                                    <View style={[styles.paymentIconContainer, { backgroundColor: '#dcfce7' }]}>
+                                        <Ionicons name="cash-outline" size={36} color={colors.success} />
                                     </View>
                                     <Text style={styles.paymentOptionTitle}>Cash</Text>
                                     <Text style={styles.paymentOptionDesc}>Customer paid cash</Text>
-                                    <View style={styles.paymentOptionButton}>
+                                    <View style={[styles.paymentOptionButton, { backgroundColor: colors.success }]}>
                                         <Text style={styles.paymentOptionButtonText}>Confirm Cash</Text>
                                     </View>
                                 </TouchableOpacity>
@@ -253,12 +274,13 @@ export default function CODConfirmationModal({
                                 <TouchableOpacity
                                     style={styles.paymentOption}
                                     onPress={handleSelectOnline}
+                                    activeOpacity={0.7}
                                 >
                                     <View style={[styles.paymentIconContainer, { backgroundColor: '#dbeafe' }]}>
-                                        <Ionicons name="phone-portrait-outline" size={32} color={colors.info} />
+                                        <Ionicons name="phone-portrait-outline" size={36} color={colors.info} />
                                     </View>
                                     <Text style={styles.paymentOptionTitle}>Online</Text>
-                                    <Text style={styles.paymentOptionDesc}>Photo proof required</Text>
+                                    <Text style={styles.paymentOptionDesc}>Take photo proof</Text>
                                     <View style={[styles.paymentOptionButton, { backgroundColor: colors.info }]}>
                                         <Text style={styles.paymentOptionButtonText}>Take Photo</Text>
                                     </View>
@@ -266,65 +288,84 @@ export default function CODConfirmationModal({
                             </View>
 
                             <View style={styles.reminderBox}>
-                                <Ionicons name="alert-circle" size={18} color={colors.warning} />
+                                <Ionicons name="alert-circle" size={20} color="#92400e" />
                                 <Text style={styles.reminderText}>
-                                    After confirming COD, scan again and select "Delivered"
+                                    After confirming COD, scan the parcel again and select "Delivered"
                                 </Text>
                             </View>
-                        </View>
-
-                        <View style={styles.footer}>
-                            <TouchableOpacity
-                                style={styles.cancelButton}
-                                onPress={handleCancel}
-                            >
-                                <Text style={styles.cancelButtonText}>Cancel</Text>
-                            </TouchableOpacity>
-                        </View>
+                        </ScrollView>
                     </View>
-                </SafeAreaView>
-            </KeyboardAvoidingView>
+                </TouchableWithoutFeedback>
+            </SafeAreaView>
         </Modal>
     );
 }
 
 const styles = StyleSheet.create({
-    overlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.6)',
-        justifyContent: 'flex-end',
-    },
-    safeArea: {
-        width: '100%',
-    },
     container: {
+        flex: 1,
         backgroundColor: colors.background,
-        borderTopLeftRadius: layouts.borderRadius.xl,
-        borderTopRightRadius: layouts.borderRadius.xl,
-        maxHeight: '95%',
+    },
+    innerContainer: {
+        flex: 1,
     },
     header: {
+        flexDirection: 'row',
         alignItems: 'center',
-        padding: layouts.spacing.lg,
+        justifyContent: 'space-between',
+        paddingHorizontal: layouts.spacing.md,
+        paddingVertical: layouts.spacing.md,
         borderBottomWidth: 1,
         borderBottomColor: colors.gray200,
+        backgroundColor: colors.background,
     },
-    iconContainer: {
-        width: 72,
-        height: 72,
-        borderRadius: 36,
-        backgroundColor: '#dcfce7',
+    headerCloseButton: {
+        width: 40,
+        height: 40,
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: layouts.spacing.md,
     },
-    title: {
-        fontSize: 22,
+    headerTitle: {
+        fontSize: 18,
         fontWeight: '700',
         color: colors.text,
     },
-    content: {
+    scrollContent: {
+        flex: 1,
+    },
+    scrollContentContainer: {
         padding: layouts.spacing.lg,
+        paddingBottom: layouts.spacing.xl * 2,
+    },
+    iconContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: '#dcfce7',
+        justifyContent: 'center',
+        alignItems: 'center',
+        alignSelf: 'center',
+        marginBottom: layouts.spacing.lg,
+    },
+    expectedAmountBox: {
+        backgroundColor: '#fef3c7',
+        padding: layouts.spacing.lg,
+        borderRadius: layouts.borderRadius.lg,
+        marginBottom: layouts.spacing.lg,
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#f59e0b',
+    },
+    expectedLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#92400e',
+        marginBottom: layouts.spacing.xs,
+    },
+    expectedAmount: {
+        fontSize: 32,
+        fontWeight: '800',
+        color: '#92400e',
     },
     infoBox: {
         flexDirection: 'row',
@@ -337,32 +378,15 @@ const styles = StyleSheet.create({
     },
     infoText: {
         flex: 1,
-        fontSize: 13,
+        fontSize: 14,
         color: '#1e40af',
-        lineHeight: 18,
-    },
-    expectedAmountBox: {
-        backgroundColor: colors.gray100,
-        padding: layouts.spacing.md,
-        borderRadius: layouts.borderRadius.md,
-        marginBottom: layouts.spacing.lg,
-        alignItems: 'center',
-    },
-    expectedLabel: {
-        fontSize: 12,
-        color: colors.textLight,
-        marginBottom: layouts.spacing.xs,
-    },
-    expectedAmount: {
-        fontSize: 28,
-        fontWeight: '700',
-        color: colors.success,
+        lineHeight: 20,
     },
     inputGroup: {
         marginBottom: layouts.spacing.lg,
     },
     inputLabel: {
-        fontSize: 14,
+        fontSize: 16,
         fontWeight: '600',
         color: colors.text,
         marginBottom: layouts.spacing.sm,
@@ -372,26 +396,28 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         borderWidth: 2,
         borderColor: colors.gray300,
-        borderRadius: layouts.borderRadius.md,
+        borderRadius: layouts.borderRadius.lg,
         overflow: 'hidden',
+        backgroundColor: colors.background,
     },
     currencyPrefix: {
-        paddingHorizontal: layouts.spacing.md,
-        fontSize: 18,
-        fontWeight: '600',
+        paddingHorizontal: layouts.spacing.lg,
+        paddingVertical: layouts.spacing.md,
+        fontSize: 20,
+        fontWeight: '700',
         color: colors.textLight,
         backgroundColor: colors.gray100,
-        paddingVertical: layouts.spacing.md,
     },
     amountInput: {
         flex: 1,
-        padding: layouts.spacing.md,
-        fontSize: 24,
+        paddingHorizontal: layouts.spacing.md,
+        paddingVertical: layouts.spacing.md,
+        fontSize: 28,
         fontWeight: '700',
         color: colors.text,
     },
     paymentTypeLabel: {
-        fontSize: 14,
+        fontSize: 16,
         fontWeight: '600',
         color: colors.text,
         marginBottom: layouts.spacing.md,
@@ -403,7 +429,7 @@ const styles = StyleSheet.create({
     },
     paymentOption: {
         flex: 1,
-        backgroundColor: colors.gray100,
+        backgroundColor: colors.card,
         borderRadius: layouts.borderRadius.lg,
         padding: layouts.spacing.md,
         alignItems: 'center',
@@ -411,27 +437,26 @@ const styles = StyleSheet.create({
         borderColor: colors.gray200,
     },
     paymentIconContainer: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        backgroundColor: '#dcfce7',
+        width: 72,
+        height: 72,
+        borderRadius: 36,
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: layouts.spacing.sm,
     },
     paymentOptionTitle: {
-        fontSize: 16,
+        fontSize: 18,
         fontWeight: '700',
         color: colors.text,
         marginBottom: layouts.spacing.xs,
     },
     paymentOptionDesc: {
-        fontSize: 12,
+        fontSize: 13,
         color: colors.textLight,
         marginBottom: layouts.spacing.md,
+        textAlign: 'center',
     },
     paymentOptionButton: {
-        backgroundColor: colors.success,
         paddingVertical: layouts.spacing.sm,
         paddingHorizontal: layouts.spacing.md,
         borderRadius: layouts.borderRadius.md,
@@ -439,39 +464,26 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     paymentOptionButtonText: {
-        fontSize: 14,
-        fontWeight: '600',
+        fontSize: 15,
+        fontWeight: '700',
         color: colors.background,
     },
     reminderBox: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         backgroundColor: '#fef3c7',
         padding: layouts.spacing.md,
         borderRadius: layouts.borderRadius.md,
         gap: layouts.spacing.sm,
+        borderWidth: 1,
+        borderColor: '#f59e0b',
     },
     reminderText: {
         flex: 1,
-        fontSize: 13,
+        fontSize: 14,
         color: '#92400e',
         fontWeight: '500',
-    },
-    footer: {
-        padding: layouts.spacing.lg,
-        borderTopWidth: 1,
-        borderTopColor: colors.gray200,
-    },
-    cancelButton: {
-        paddingVertical: layouts.spacing.md,
-        borderRadius: layouts.borderRadius.md,
-        backgroundColor: colors.gray200,
-        alignItems: 'center',
-    },
-    cancelButtonText: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: colors.text,
+        lineHeight: 20,
     },
     cameraContainer: {
         flex: 1,
@@ -481,7 +493,8 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: layouts.spacing.lg,
+        paddingHorizontal: layouts.spacing.md,
+        paddingVertical: layouts.spacing.md,
         borderBottomWidth: 1,
         borderBottomColor: colors.gray200,
     },
@@ -591,19 +604,9 @@ const styles = StyleSheet.create({
         paddingVertical: layouts.spacing.md,
         paddingHorizontal: layouts.spacing.xl,
         borderRadius: layouts.borderRadius.md,
-        marginBottom: layouts.spacing.md,
     },
     permissionButtonText: {
         color: colors.background,
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    backButton: {
-        paddingVertical: layouts.spacing.md,
-        paddingHorizontal: layouts.spacing.xl,
-    },
-    backButtonText: {
-        color: colors.primary,
         fontSize: 16,
         fontWeight: '600',
     },

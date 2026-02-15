@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Modal,
     View,
@@ -7,8 +7,9 @@ import {
     TouchableOpacity,
     SafeAreaView,
     TextInput,
-    KeyboardAvoidingView,
-    Platform,
+    ScrollView,
+    TouchableWithoutFeedback,
+    Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/Colors';
@@ -40,8 +41,19 @@ export default function ReasonInputModal({
 
     const isPartialDelivery = statusId === PARTIAL_DELIVERY_STATUS_ID;
 
+    useEffect(() => {
+        if (!visible) {
+            setReason('');
+            setPiecesMissing('');
+        }
+    }, [visible]);
+
     const handleSubmit = () => {
         if (!reason.trim()) {
+            return;
+        }
+
+        if (isPartialDelivery && !piecesMissing.trim()) {
             return;
         }
 
@@ -51,18 +63,19 @@ export default function ReasonInputModal({
         } else {
             onSubmit(reason.trim());
         }
-
-        setReason('');
-        setPiecesMissing('');
     };
 
-    const handleCancel = () => {
+    const handleClose = () => {
         setReason('');
         setPiecesMissing('');
         onCancel();
     };
 
-    const getIcon = () => {
+    const dismissKeyboard = () => {
+        Keyboard.dismiss();
+    };
+
+    const getIcon = (): any => {
         switch (statusId) {
             case RESCHEDULED_DELIVERY_STATUS_ID:
                 return 'calendar-outline';
@@ -72,6 +85,19 @@ export default function ReasonInputModal({
                 return 'ban-outline';
             default:
                 return 'document-text-outline';
+        }
+    };
+
+    const getIconColor = () => {
+        switch (statusId) {
+            case RESCHEDULED_DELIVERY_STATUS_ID:
+                return '#f59e0b';
+            case PARTIAL_DELIVERY_STATUS_ID:
+                return '#f97316';
+            case SHIPMENT_REFUSED_STATUS_ID:
+                return '#ef4444';
+            default:
+                return colors.primary;
         }
     };
 
@@ -106,29 +132,37 @@ export default function ReasonInputModal({
         <Modal
             visible={visible}
             animationType="slide"
-            transparent={true}
-            onRequestClose={handleCancel}
+            transparent={false}
+            onRequestClose={handleClose}
         >
-            <KeyboardAvoidingView
-                style={styles.overlay}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            >
-                <SafeAreaView style={styles.safeArea}>
-                    <View style={styles.container}>
+            <SafeAreaView style={styles.container}>
+                <TouchableWithoutFeedback onPress={dismissKeyboard}>
+                    <View style={styles.innerContainer}>
                         <View style={styles.header}>
-                            <View style={styles.iconContainer}>
-                                <Ionicons name={getIcon()} size={32} color={colors.primary} />
-                            </View>
-                            <Text style={styles.title}>{statusName}</Text>
-                            <Text style={styles.subtitle}>Reason is MANDATORY</Text>
+                            <TouchableOpacity onPress={handleClose} style={styles.headerCloseButton}>
+                                <Ionicons name="close" size={28} color={colors.text} />
+                            </TouchableOpacity>
+                            <Text style={styles.headerTitle}>{statusName}</Text>
+                            <View style={{ width: 40 }} />
                         </View>
 
-                        <View style={styles.content}>
+                        <ScrollView 
+                            style={styles.scrollContent}
+                            contentContainerStyle={styles.scrollContentContainer}
+                            keyboardShouldPersistTaps="handled"
+                        >
+                            <View style={[styles.iconContainer, { backgroundColor: `${getIconColor()}20` }]}>
+                                <Ionicons name={getIcon()} size={48} color={getIconColor()} />
+                            </View>
+
+                            <View style={styles.mandatoryBadge}>
+                                <Ionicons name="warning" size={16} color="#dc2626" />
+                                <Text style={styles.mandatoryText}>Reason is MANDATORY</Text>
+                            </View>
+
                             {isPartialDelivery && (
                                 <View style={styles.inputGroup}>
-                                    <Text style={styles.inputLabel}>
-                                        How many pieces are missing? *
-                                    </Text>
+                                    <Text style={styles.inputLabel}>How many pieces are missing? *</Text>
                                     <TextInput
                                         style={styles.numberInput}
                                         value={piecesMissing}
@@ -136,6 +170,8 @@ export default function ReasonInputModal({
                                         placeholder="Enter number"
                                         placeholderTextColor={colors.gray400}
                                         keyboardType="number-pad"
+                                        returnKeyType="done"
+                                        onSubmitEditing={dismissKeyboard}
                                     />
                                 </View>
                             )}
@@ -153,28 +189,35 @@ export default function ReasonInputModal({
                                     multiline
                                     numberOfLines={4}
                                     textAlignVertical="top"
+                                    returnKeyType="done"
+                                    blurOnSubmit={true}
+                                    onSubmitEditing={dismissKeyboard}
                                 />
                             </View>
 
                             <View style={styles.examplesSection}>
-                                <Text style={styles.examplesTitle}>Examples:</Text>
+                                <Text style={styles.examplesTitle}>EXAMPLES:</Text>
                                 {getExamples().map((example, index) => (
                                     <TouchableOpacity
                                         key={index}
                                         style={styles.exampleItem}
-                                        onPress={() => setReason(example)}
+                                        onPress={() => {
+                                            setReason(example);
+                                            dismissKeyboard();
+                                        }}
+                                        activeOpacity={0.7}
                                     >
-                                        <Ionicons name="arrow-forward" size={14} color={colors.primary} />
+                                        <Ionicons name="arrow-forward" size={16} color={colors.primary} />
                                         <Text style={styles.exampleText}>{example}</Text>
                                     </TouchableOpacity>
                                 ))}
                             </View>
-                        </View>
+                        </ScrollView>
 
                         <View style={styles.footer}>
                             <TouchableOpacity
                                 style={styles.cancelButton}
-                                onPress={handleCancel}
+                                onPress={handleClose}
                             >
                                 <Text style={styles.cancelButtonText}>Cancel</Text>
                             </TouchableOpacity>
@@ -187,110 +230,139 @@ export default function ReasonInputModal({
                                 onPress={handleSubmit}
                                 disabled={!isValid}
                             >
-                                <Ionicons name="checkmark-circle" size={20} color={colors.background} />
+                                <Ionicons name="checkmark-circle" size={22} color={colors.background} />
                                 <Text style={styles.submitButtonText}>Submit</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
-                </SafeAreaView>
-            </KeyboardAvoidingView>
+                </TouchableWithoutFeedback>
+            </SafeAreaView>
         </Modal>
     );
 }
 
 const styles = StyleSheet.create({
-    overlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.6)',
-        justifyContent: 'flex-end',
-    },
-    safeArea: {
-        width: '100%',
-    },
     container: {
+        flex: 1,
         backgroundColor: colors.background,
-        borderTopLeftRadius: layouts.borderRadius.xl,
-        borderTopRightRadius: layouts.borderRadius.xl,
-        maxHeight: '90%',
+    },
+    innerContainer: {
+        flex: 1,
     },
     header: {
+        flexDirection: 'row',
         alignItems: 'center',
-        padding: layouts.spacing.lg,
+        justifyContent: 'space-between',
+        paddingHorizontal: layouts.spacing.md,
+        paddingVertical: layouts.spacing.md,
         borderBottomWidth: 1,
         borderBottomColor: colors.gray200,
+        backgroundColor: colors.background,
     },
-    iconContainer: {
-        width: 64,
-        height: 64,
-        borderRadius: 32,
-        backgroundColor: colors.primaryLight,
+    headerCloseButton: {
+        width: 40,
+        height: 40,
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: layouts.spacing.md,
     },
-    title: {
-        fontSize: 20,
+    headerTitle: {
+        fontSize: 18,
         fontWeight: '700',
         color: colors.text,
-        marginBottom: layouts.spacing.xs,
+        textAlign: 'center',
+        flex: 1,
     },
-    subtitle: {
-        fontSize: 14,
-        color: colors.error,
-        fontWeight: '600',
+    scrollContent: {
+        flex: 1,
     },
-    content: {
+    scrollContentContainer: {
         padding: layouts.spacing.lg,
+        paddingBottom: layouts.spacing.xl * 2,
+    },
+    iconContainer: {
+        width: 88,
+        height: 88,
+        borderRadius: 44,
+        justifyContent: 'center',
+        alignItems: 'center',
+        alignSelf: 'center',
+        marginBottom: layouts.spacing.md,
+    },
+    mandatoryBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#fef2f2',
+        paddingVertical: layouts.spacing.sm,
+        paddingHorizontal: layouts.spacing.md,
+        borderRadius: layouts.borderRadius.full,
+        alignSelf: 'center',
+        marginBottom: layouts.spacing.xl,
+        gap: layouts.spacing.xs,
+        borderWidth: 1,
+        borderColor: '#fecaca',
+    },
+    mandatoryText: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#dc2626',
     },
     inputGroup: {
         marginBottom: layouts.spacing.lg,
     },
     inputLabel: {
-        fontSize: 14,
+        fontSize: 16,
         fontWeight: '600',
         color: colors.text,
         marginBottom: layouts.spacing.sm,
     },
     numberInput: {
-        borderWidth: 1,
+        borderWidth: 2,
         borderColor: colors.gray300,
-        borderRadius: layouts.borderRadius.md,
-        padding: layouts.spacing.md,
-        fontSize: 18,
+        borderRadius: layouts.borderRadius.lg,
+        paddingHorizontal: layouts.spacing.lg,
+        paddingVertical: layouts.spacing.md,
+        fontSize: 24,
         color: colors.text,
-        fontWeight: '600',
+        fontWeight: '700',
         textAlign: 'center',
+        backgroundColor: colors.background,
     },
     textInput: {
-        borderWidth: 1,
+        borderWidth: 2,
         borderColor: colors.gray300,
-        borderRadius: layouts.borderRadius.md,
+        borderRadius: layouts.borderRadius.lg,
         padding: layouts.spacing.md,
         fontSize: 16,
         color: colors.text,
-        minHeight: 100,
+        minHeight: 120,
+        backgroundColor: colors.background,
+        lineHeight: 24,
     },
     examplesSection: {
         backgroundColor: colors.gray100,
-        borderRadius: layouts.borderRadius.md,
+        borderRadius: layouts.borderRadius.lg,
         padding: layouts.spacing.md,
     },
     examplesTitle: {
-        fontSize: 12,
-        fontWeight: '600',
+        fontSize: 13,
+        fontWeight: '700',
         color: colors.textLight,
         marginBottom: layouts.spacing.sm,
-        textTransform: 'uppercase',
+        letterSpacing: 0.5,
     },
     exampleItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: layouts.spacing.xs,
+        paddingVertical: layouts.spacing.sm,
         gap: layouts.spacing.sm,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.gray200,
     },
     exampleText: {
-        fontSize: 14,
+        fontSize: 15,
         color: colors.text,
+        flex: 1,
     },
     footer: {
         flexDirection: 'row',
@@ -298,17 +370,18 @@ const styles = StyleSheet.create({
         gap: layouts.spacing.md,
         borderTopWidth: 1,
         borderTopColor: colors.gray200,
+        backgroundColor: colors.background,
     },
     cancelButton: {
         flex: 1,
         paddingVertical: layouts.spacing.md,
-        borderRadius: layouts.borderRadius.md,
+        borderRadius: layouts.borderRadius.lg,
         backgroundColor: colors.gray200,
         alignItems: 'center',
         justifyContent: 'center',
     },
     cancelButtonText: {
-        fontSize: 16,
+        fontSize: 17,
         fontWeight: '600',
         color: colors.text,
     },
@@ -316,7 +389,7 @@ const styles = StyleSheet.create({
         flex: 1,
         flexDirection: 'row',
         paddingVertical: layouts.spacing.md,
-        borderRadius: layouts.borderRadius.md,
+        borderRadius: layouts.borderRadius.lg,
         backgroundColor: colors.primary,
         alignItems: 'center',
         justifyContent: 'center',
@@ -326,8 +399,8 @@ const styles = StyleSheet.create({
         backgroundColor: colors.gray400,
     },
     submitButtonText: {
-        fontSize: 16,
-        fontWeight: '600',
+        fontSize: 17,
+        fontWeight: '700',
         color: colors.background,
     },
 });

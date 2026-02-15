@@ -31,6 +31,13 @@ import ReasonInputModal from '../../../components/ReasonInputModal';
 import CODConfirmationModal from '../../../components/CODConfirmationModal';
 import StatusPhotoCapture from '../../../components/StatusPhotoCapture';
 
+const DEFAULT_COD_INFO: CODInfo = {
+  hasCOD: false,
+  amount: null,
+  currency: 'EUR',
+  rawText: null,
+};
+
 export default function SingleScanScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -56,7 +63,7 @@ export default function SingleScanScreen() {
   } | null>(null);
   const [callConfirmed, setCallConfirmed] = useState(false);
   const [capturedPhotos, setCapturedPhotos] = useState<CompressedImage[]>([]);
-  const [codInfo, setCodInfo] = useState<CODInfo | null>(null);
+  const [codInfo, setCodInfo] = useState<CODInfo>(DEFAULT_COD_INFO);
 
   useEffect(() => {
     loadInitialData();
@@ -121,6 +128,8 @@ export default function SingleScanScreen() {
     if (bookingData.special_instruction) {
       const cod = parseCODFromSpecialInstruction(bookingData.special_instruction);
       setCodInfo(cod);
+    } else {
+      setCodInfo(DEFAULT_COD_INFO);
     }
 
     setShowStatusSelector(true);
@@ -168,6 +177,15 @@ export default function SingleScanScreen() {
     setCapturedPhotos([]);
 
     if (requirements.twoStep) {
+      if (!codInfo.hasCOD) {
+        const manualCod: CODInfo = {
+          hasCOD: true,
+          amount: null,
+          currency: 'EUR',
+          rawText: null,
+        };
+        setCodInfo(manualCod);
+      }
       setShowCODConfirmation(true);
     } else if (requirements.callRequired) {
       setShowCallConfirmation(true);
@@ -254,9 +272,9 @@ export default function SingleScanScreen() {
       const codRecord: any = {
         booking_id: booking.booking_id,
         miles_ref: booking.miles_ref,
-        expected_amount: codInfo?.amount || undefined,
+        expected_amount: codInfo.amount || undefined,
         collected_amount: collectedAmount,
-        currency: codInfo?.currency || 'EUR',
+        currency: codInfo.currency || 'EUR',
         payment_type: paymentType,
         captured_by: user.id,
       };
@@ -391,7 +409,7 @@ export default function SingleScanScreen() {
     setPendingRequirements(null);
     setCallConfirmed(false);
     setCapturedPhotos([]);
-    setCodInfo(null);
+    setCodInfo(DEFAULT_COD_INFO);
   };
 
   if (loading) {
@@ -433,7 +451,7 @@ export default function SingleScanScreen() {
               </View>
             </View>
             
-            {codInfo?.hasCOD && (
+            {codInfo.hasCOD && (
               <View style={styles.codBanner}>
                 <Ionicons name="cash" size={20} color="#92400e" />
                 <View style={styles.codBannerContent}>
@@ -502,18 +520,16 @@ export default function SingleScanScreen() {
         }}
       />
 
-      {codInfo && (
-        <CODConfirmationModal
-          visible={showCODConfirmation}
-          codInfo={codInfo}
-          onConfirm={handleCODConfirmed}
-          onCancel={() => {
-            setShowCODConfirmation(false);
-            setPendingStatus(null);
-            setPendingRequirements(null);
-          }}
-        />
-      )}
+      <CODConfirmationModal
+        visible={showCODConfirmation}
+        codInfo={codInfo}
+        onConfirm={handleCODConfirmed}
+        onCancel={() => {
+          setShowCODConfirmation(false);
+          setPendingStatus(null);
+          setPendingRequirements(null);
+        }}
+      />
 
       <StatusPhotoCapture
         visible={showPhotoCapture}

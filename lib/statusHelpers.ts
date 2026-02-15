@@ -105,20 +105,23 @@ export const parseCODFromSpecialInstruction = (specialInstruction: string | null
 
 export const getStatusHistory = async (bookingId: number): Promise<StatusHistoryItem[]> => {
     try {
-        const { data, error } = await supabaseBizhandle
-            .from('miles_production.booking_status')
-            .select(`
+        const query = `
+            SELECT 
                 booking_status_id,
                 booking_id,
                 status_id,
                 delivered_date,
                 delivered_time,
                 created_at
-            `)
-            .eq('booking_id', bookingId)
-            .is('deleted_at', null)
-            .order('delivered_date', { ascending: true })
-            .order('delivered_time', { ascending: true });
+            FROM miles_production.booking_status
+            WHERE booking_id = ${bookingId}
+              AND deleted_at IS NULL
+            ORDER BY delivered_date ASC, delivered_time ASC
+        `;
+
+        const { data, error } = await supabaseBizhandle.rpc('execute_sql', {
+            sql: query
+        });
 
         if (error) {
             console.error('Error fetching status history:', error);
@@ -134,13 +137,18 @@ export const getStatusHistory = async (bookingId: number): Promise<StatusHistory
 
 export const hasStatusInHistory = async (bookingId: number, statusId: number): Promise<boolean> => {
     try {
-        const { data, error } = await supabaseBizhandle
-            .from('miles_production.booking_status')
-            .select('booking_status_id')
-            .eq('booking_id', bookingId)
-            .eq('status_id', statusId)
-            .is('deleted_at', null)
-            .limit(1);
+        const query = `
+            SELECT booking_status_id
+            FROM miles_production.booking_status
+            WHERE booking_id = ${bookingId}
+              AND status_id = ${statusId}
+              AND deleted_at IS NULL
+            LIMIT 1
+        `;
+
+        const { data, error } = await supabaseBizhandle.rpc('execute_sql', {
+            sql: query
+        });
 
         if (error) {
             console.error('Error checking status history:', error);
@@ -205,15 +213,6 @@ export const validateStatusSelection = async (
             return await validateLeftMessageNote2(bookingId);
         
         case COD_CASH_COLLECTED_STATUS_ID:
-            if (booking?.special_instruction) {
-                const codInfo = parseCODFromSpecialInstruction(booking.special_instruction);
-                if (!codInfo.hasCOD) {
-                    return {
-                        allowed: false,
-                        error: 'This booking does not have COD in special instructions.',
-                    };
-                }
-            }
             return { allowed: true };
         
         default:
