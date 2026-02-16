@@ -23,9 +23,6 @@
         "NSPhotoLibraryUsageDescription": "This app needs photo library access to select vehicle wash photos.",
         "NSLocationWhenInUseUsageDescription": "This app needs location access to optimize your delivery routes.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs location access to optimize your delivery routes."
-      },
-      "config": {
-        "googleMapsApiKey": "AIzaSyDF5YJByLyee_mj84JpVRDbP5inM95tdH4"
       }
     },
     "android": {
@@ -47,12 +44,7 @@
         "WAKE_LOCK",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
-      ],
-      "config": {
-        "googleMaps": {
-          "apiKey": "AIzaSyDF5YJByLyee_mj84JpVRDbP5inM95tdH4"
-        }
-      }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"

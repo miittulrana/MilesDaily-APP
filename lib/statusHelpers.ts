@@ -1,4 +1,5 @@
 import { supabaseBizhandle } from './bizhandleClient';
+import { supabase } from './supabase';
 import { Booking } from './bizhandleTypes';
 
 export const LEFT_MESSAGE_NOTE_1_STATUS_ID = 17;
@@ -35,6 +36,11 @@ export const TWO_STEP_STATUSES = [
     COD_CASH_COLLECTED_STATUS_ID,
 ];
 
+export const LEFT_MESSAGE_STATUSES = [
+    LEFT_MESSAGE_NOTE_1_STATUS_ID,
+    LEFT_MESSAGE_NOTE_2_STATUS_ID,
+];
+
 export interface CODInfo {
     hasCOD: boolean;
     amount: number | null;
@@ -57,6 +63,12 @@ export interface StatusValidationResult {
     error?: string;
     warning?: string;
     suggestedStatusId?: number;
+}
+
+export interface LeftMessageCheckResult {
+    warning: boolean;
+    count: number;
+    message?: string;
 }
 
 export const parseCODFromSpecialInstruction = (specialInstruction: string | null | undefined): CODInfo => {
@@ -162,6 +174,66 @@ export const hasStatusInHistory = async (bookingId: number, statusId: number): P
     }
 };
 
+export const checkLeftMessageDailyCount = async (
+    statusId: number,
+    bookingRef?: string
+): Promise<LeftMessageCheckResult> => {
+    if (!LEFT_MESSAGE_STATUSES.includes(statusId)) {
+        return { warning: false, count: 0 };
+    }
+
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session?.access_token) {
+            console.log('No auth session for left message check - skipping');
+            return { warning: false, count: 0 };
+        }
+
+        const url = 'https://fleet.milesxp.com/api/drivers/left-message-warning';
+        
+        console.log('=== LEFT MESSAGE CHECK ===');
+        console.log('URL:', url);
+        console.log('Status ID:', statusId);
+        console.log('Booking Ref:', bookingRef);
+        console.log('Has Token:', !!session.access_token);
+        console.log('Token Preview:', session.access_token.substring(0, 20) + '...');
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+                status_id: statusId,
+                booking_ref: bookingRef,
+            }),
+        });
+
+        console.log('Response Status:', response.status);
+        console.log('Response OK:', response.ok);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Left message warning API error:', response.status, errorText);
+            return { warning: false, count: 0 };
+        }
+
+        const result = await response.json();
+        console.log('Left message warning API result:', result);
+        
+        return {
+            warning: result.warning || false,
+            count: result.count || 0,
+            message: result.message,
+        };
+    } catch (error: any) {
+        console.error('Left message check exception:', error);
+        return { warning: false, count: 0 };
+    }
+};
+
 export const validateLeftMessageNote1 = async (bookingId: number): Promise<StatusValidationResult> => {
     const hasNote1 = await hasStatusInHistory(bookingId, LEFT_MESSAGE_NOTE_1_STATUS_ID);
     
@@ -234,6 +306,10 @@ export const isReasonRequired = (statusId: number): boolean => {
 
 export const isTwoStepStatus = (statusId: number): boolean => {
     return TWO_STEP_STATUSES.includes(statusId);
+};
+
+export const isLeftMessageStatus = (statusId: number): boolean => {
+    return LEFT_MESSAGE_STATUSES.includes(statusId);
 };
 
 export const getStatusRequirements = (statusId: number): {

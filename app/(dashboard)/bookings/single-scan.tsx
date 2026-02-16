@@ -18,6 +18,8 @@ import { DriverType, COD_CASH_COLLECTED_STATUS_ID, DELIVERED_STATUS_ID } from '.
 import { 
   parseCODFromSpecialInstruction, 
   validateStatusSelection,
+  checkLeftMessageDailyCount,
+  isLeftMessageStatus,
   CODInfo,
 } from '../../../lib/statusHelpers';
 import { saveStatusPOD, saveStatusNote, saveCODRecord } from '../../../lib/bookingNotesApi';
@@ -171,6 +173,36 @@ export default function SingleScanScreen() {
       return;
     }
 
+    if (isLeftMessageStatus(status.status_id)) {
+      const leftMessageCheck = await checkLeftMessageDailyCount(status.status_id, booking.miles_ref);
+      
+      if (leftMessageCheck.warning) {
+        Alert.alert(
+          '⚠️ Warning',
+          leftMessageCheck.message || `You have used this status ${leftMessageCheck.count} times today. Supervisor has been notified.`,
+          [
+            { 
+              text: 'Continue Anyway', 
+              onPress: () => proceedWithStatusFlow(status, requirements),
+              style: 'default'
+            },
+            { 
+              text: 'Cancel', 
+              style: 'cancel' 
+            },
+          ]
+        );
+        return;
+      }
+    }
+
+    proceedWithStatusFlow(status, requirements);
+  };
+
+  const proceedWithStatusFlow = (
+    status: Status,
+    requirements: { callRequired: boolean; photoRequired: boolean; reasonRequired: boolean; twoStep: boolean }
+  ) => {
     setPendingStatus(status);
     setPendingRequirements(requirements);
     setCallConfirmed(false);
