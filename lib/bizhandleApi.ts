@@ -3,6 +3,63 @@ import { getBizhandleToken } from './bizhandleAuth';
 import { Booking, Status, UpdateBookingParams } from './bizhandleTypes';
 
 const BIZHANDLE_API = 'https://prod.milesxp.com/api/logistics';
+const FETCH_TIMEOUT = 15000;
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000;
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const fetchWithTimeout = async (
+  url: string,
+  options: RequestInit,
+  timeout: number = FETCH_TIMEOUT
+): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout');
+    }
+    throw error;
+  }
+};
+
+const fetchWithRetry = async (
+  url: string,
+  options: RequestInit,
+  retries: number = MAX_RETRIES
+): Promise<Response> => {
+  let lastError: any = null;
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const networkState = await Network.getNetworkStateAsync();
+      if (!networkState.isConnected) {
+        throw new Error('No internet connection');
+      }
+
+      const response = await fetchWithTimeout(url, options);
+      return response;
+    } catch (error: any) {
+      lastError = error;
+
+      if (attempt < retries) {
+        await sleep(RETRY_DELAY * attempt);
+      }
+    }
+  }
+
+  throw lastError;
+};
 
 const getDeviceIP = async (): Promise<string> => {
   try {
@@ -37,7 +94,7 @@ export const findBooking = async (barcode: string): Promise<{
     formData.append('ipaddress', ipaddress);
     formData.append('build_time', build_time);
 
-    const response = await fetch(`${BIZHANDLE_API}/bookings/findBooking`, {
+    const response = await fetchWithRetry(`${BIZHANDLE_API}/bookings/findBooking`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -50,7 +107,7 @@ export const findBooking = async (barcode: string): Promise<{
 
     if (data.status === 200) {
       const bookingData = data.booking;
-      
+
       const booking: Booking = {
         booking_id: bookingData.booking_id,
         miles_ref: bookingData.miles_ref,
@@ -70,9 +127,14 @@ export const findBooking = async (barcode: string): Promise<{
     }
 
     return { success: false, error: data.error || 'Booking not found' };
-  } catch (error) {
-    console.error('Find booking error:', error);
-    return { success: false, error: 'Connection error' };
+  } catch (error: any) {
+    if (error.message === 'Request timeout') {
+      return { success: false, error: 'Connection timeout. Please try again.' };
+    }
+    if (error.message === 'No internet connection') {
+      return { success: false, error: 'No internet connection. Please check your network.' };
+    }
+    return { success: false, error: 'Connection error. Please try again.' };
   }
 };
 
@@ -120,7 +182,7 @@ export const updateBooking = async (params: UpdateBookingParams): Promise<{
       formData.append('signature', '');
     }
 
-    const response = await fetch(`${BIZHANDLE_API}/bookings/updateBookings`, {
+    const response = await fetchWithRetry(`${BIZHANDLE_API}/bookings/updateBookings`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -135,9 +197,14 @@ export const updateBooking = async (params: UpdateBookingParams): Promise<{
     }
 
     return { success: false, error: data.error || 'Update failed' };
-  } catch (error) {
-    console.error('Update booking error:', error);
-    return { success: false, error: 'Connection error' };
+  } catch (error: any) {
+    if (error.message === 'Request timeout') {
+      return { success: false, error: 'Connection timeout. Please try again.' };
+    }
+    if (error.message === 'No internet connection') {
+      return { success: false, error: 'No internet connection. Please check your network.' };
+    }
+    return { success: false, error: 'Connection error. Please try again.' };
   }
 };
 
@@ -152,7 +219,7 @@ export const getStatuses = async (): Promise<{
       return { success: false, error: 'Not logged in to Bizhandle' };
     }
 
-    const response = await fetch(`${BIZHANDLE_API}/statuses`, {
+    const response = await fetchWithRetry(`${BIZHANDLE_API}/statuses`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -166,8 +233,13 @@ export const getStatuses = async (): Promise<{
     }
 
     return { success: false, error: 'Failed to load statuses' };
-  } catch (error) {
-    console.error('Get statuses error:', error);
-    return { success: false, error: 'Connection error' };
+  } catch (error: any) {
+    if (error.message === 'Request timeout') {
+      return { success: false, error: 'Connection timeout. Please try again.' };
+    }
+    if (error.message === 'No internet connection') {
+      return { success: false, error: 'No internet connection. Please check your network.' };
+    }
+    return { success: false, error: 'Connection error. Please try again.' };
   }
 };

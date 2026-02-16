@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Modal,
     View,
@@ -15,13 +15,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors } from '../constants/Colors';
 import { layouts } from '../constants/layouts';
 import { CompressedImage, compressImage } from '../lib/imageCompression';
-import {
-    LEFT_MESSAGE_NOTE_1_STATUS_ID,
-    LEFT_MESSAGE_NOTE_2_STATUS_ID,
-    WRONG_CASE_PACKAGING_STATUS_ID,
-    CORRECT_CONTACT_DETAILS_STATUS_ID,
-    getStatusInstructions,
-} from '../lib/statusHelpers';
+import { getStatusInstructions, getPhotoDescription, getMaxPhotos } from '../lib/remoteConfig';
 
 interface StatusPhotoCaptureProps {
     visible: boolean;
@@ -38,24 +32,73 @@ export default function StatusPhotoCapture({
     statusName,
     onComplete,
     onCancel,
-    maxPhotos = 3,
+    maxPhotos: propMaxPhotos,
 }: StatusPhotoCaptureProps) {
     const [permission, requestPermission] = useCameraPermissions();
     const [photos, setPhotos] = useState<CompressedImage[]>([]);
     const [cameraRef, setCameraRef] = useState<any>(null);
     const [capturing, setCapturing] = useState(false);
+    const [instructions, setInstructions] = useState<string[]>([]);
+    const [photoDescription, setPhotoDescription] = useState<string>('Take a photo');
+    const [maxPhotosAllowed, setMaxPhotosAllowed] = useState<number>(propMaxPhotos || 3);
 
-    const instructions = getStatusInstructions(statusId);
+    useEffect(() => {
+        if (visible) {
+            loadRemoteConfig();
+        }
+    }, [visible, statusId]);
 
-    const getPhotoDescription = () => {
-        switch (statusId) {
-            case LEFT_MESSAGE_NOTE_1_STATUS_ID:
+    const loadRemoteConfig = async () => {
+        try {
+            const [remoteInstructions, remoteDescription, remoteMaxPhotos] = await Promise.all([
+                getStatusInstructions(statusId),
+                getPhotoDescription(statusId),
+                getMaxPhotos(statusId),
+            ]);
+
+            setInstructions(remoteInstructions);
+            setPhotoDescription(remoteDescription || 'Take a photo');
+            setMaxPhotosAllowed(propMaxPhotos || remoteMaxPhotos || 3);
+        } catch (error) {
+            console.error('Error loading remote config for StatusPhotoCapture:', error);
+            setInstructions(getDefaultInstructions(statusId));
+            setPhotoDescription(getDefaultPhotoDescription(statusId));
+            setMaxPhotosAllowed(propMaxPhotos || 3);
+        }
+    };
+
+    const getDefaultInstructions = (id: number): string[] => {
+        switch (id) {
+            case 17:
+                return [
+                    'CALL the customer first!',
+                    'Confirm: "I called the customer"',
+                    'Take PHOTO of location + Note',
+                ];
+            case 52:
+                return [
+                    'CALL the customer first!',
+                    'Confirm: "I called the customer"',
+                    'Take PHOTO of location',
+                ];
+            case 59:
+                return ['Take PHOTO of the parcel', 'Show the damage or problem clearly!'];
+            case 16:
+                return ['Take PHOTO of parcel'];
+            default:
+                return [];
+        }
+    };
+
+    const getDefaultPhotoDescription = (id: number): string => {
+        switch (id) {
+            case 17:
                 return 'Take a photo of the location where you left the message note';
-            case LEFT_MESSAGE_NOTE_2_STATUS_ID:
+            case 52:
                 return 'Take a photo of the location';
-            case WRONG_CASE_PACKAGING_STATUS_ID:
+            case 59:
                 return 'Take a photo showing the damage or packaging problem clearly';
-            case CORRECT_CONTACT_DETAILS_STATUS_ID:
+            case 16:
                 return 'Take a photo of the parcel';
             default:
                 return 'Take a photo';
@@ -63,13 +106,13 @@ export default function StatusPhotoCapture({
     };
 
     const handleTakePhoto = async () => {
-        if (!cameraRef || capturing || photos.length >= maxPhotos) return;
+        if (!cameraRef || capturing || photos.length >= maxPhotosAllowed) return;
 
         try {
             setCapturing(true);
             const photoResult = await cameraRef.takePictureAsync({ quality: 0.8 });
             const compressed = await compressImage(photoResult.uri);
-            
+
             const newPhotos = [...photos, compressed];
             setPhotos(newPhotos);
         } catch (error) {
@@ -147,15 +190,11 @@ export default function StatusPhotoCapture({
                 )}
 
                 <View style={styles.cameraContainer}>
-                    <CameraView
-                        style={styles.camera}
-                        facing="back"
-                        ref={(ref) => setCameraRef(ref)}
-                    >
+                    <CameraView style={styles.camera} facing="back" ref={(ref) => setCameraRef(ref)}>
                         <View style={styles.cameraOverlay}>
                             <View style={styles.photoCountBadge}>
                                 <Text style={styles.photoCountText}>
-                                    {photos.length} / {maxPhotos}
+                                    {photos.length} / {maxPhotosAllowed}
                                 </Text>
                             </View>
                         </View>
@@ -163,7 +202,7 @@ export default function StatusPhotoCapture({
                 </View>
 
                 <View style={styles.bottomSection}>
-                    <Text style={styles.photoDescription}>{getPhotoDescription()}</Text>
+                    <Text style={styles.photoDescription}>{photoDescription}</Text>
 
                     {photos.length > 0 && (
                         <ScrollView
@@ -190,20 +229,17 @@ export default function StatusPhotoCapture({
                         <TouchableOpacity
                             style={[
                                 styles.captureButton,
-                                (capturing || photos.length >= maxPhotos) && styles.captureButtonDisabled,
+                                (capturing || photos.length >= maxPhotosAllowed) && styles.captureButtonDisabled,
                             ]}
                             onPress={handleTakePhoto}
-                            disabled={capturing || photos.length >= maxPhotos}
+                            disabled={capturing || photos.length >= maxPhotosAllowed}
                         >
                             <View style={styles.captureButtonInner} />
                         </TouchableOpacity>
                     </View>
 
                     <TouchableOpacity
-                        style={[
-                            styles.completeButton,
-                            photos.length === 0 && styles.completeButtonDisabled,
-                        ]}
+                        style={[styles.completeButton, photos.length === 0 && styles.completeButtonDisabled]}
                         onPress={handleComplete}
                         disabled={photos.length === 0}
                     >

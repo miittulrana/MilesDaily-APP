@@ -13,6 +13,7 @@ import { layouts } from '../../../constants/layouts';
 import { updateBooking } from '../../../lib/bizhandleApi';
 import { savePOD } from '../../../lib/podStorage';
 import { supabase } from '../../../lib/supabase';
+import { PICKED_UP_STATUS_ID } from '../../../lib/statusPermissions';
 import FormInput from '../../../components/FormInput';
 import SignatureCanvas from '../../../components/SignatureCanvas';
 import PhotoCapture from '../../../components/PhotoCapture';
@@ -31,6 +32,7 @@ export default function SignatureScreen() {
   const [step, setStep] = useState<'photo' | 'details'>('photo');
 
   const statusId = params.status_id ? Number(params.status_id) : 10;
+  const isPickedUp = statusId === PICKED_UP_STATUS_ID;
 
   const handlePhotosCapture = (capturedPhotos: CompressedImage[]) => {
     setPhotos(capturedPhotos);
@@ -44,21 +46,28 @@ export default function SignatureScreen() {
     setStep('details');
   };
 
-  const handleUpdate = async () => {
-    console.log('=== HANDLE UPDATE STARTED ===');
-    console.log('Client Name:', clientName);
-    console.log('ID Card:', idCard);
-    console.log('Signature exists:', !!signature);
-    console.log('Photos count:', photos.length);
-    console.log('Status ID:', statusId);
+  const canSubmit = () => {
+    if (photos.length === 0) return false;
+    if (!clientName) return false;
+    if (isPickedUp) {
+      return true;
+    }
+    return !!idCard && !!signature;
+  };
 
-    if (!clientName || !idCard || !signature) {
-      Alert.alert('Required', 'Please fill in all fields and add signature');
+  const handleUpdate = async () => {
+    if (!clientName) {
+      Alert.alert('Required', 'Please enter client name');
       return;
     }
 
     if (photos.length === 0) {
       Alert.alert('Required', 'Please capture at least one photo for POD');
+      return;
+    }
+
+    if (!isPickedUp && (!idCard || !signature)) {
+      Alert.alert('Required', 'Please fill in all fields and add signature');
       return;
     }
 
@@ -68,47 +77,33 @@ export default function SignatureScreen() {
     const delivered_date = now.toISOString().split('T')[0];
     const delivered_time = now.toTimeString().split(' ')[0];
 
-    console.log('Delivered date:', delivered_date);
-    console.log('Delivered time:', delivered_time);
-
     try {
-      console.log('Getting authenticated user...');
       const { data: { user } } = await supabase.auth.getUser();
-      console.log('User ID:', user?.id);
 
       if (!user) {
-        console.error('ERROR: No authenticated user');
         Alert.alert('Error', 'User not authenticated');
         setLoading(false);
         return;
       }
 
       if (params.mode === 'single') {
-        console.log('=== SINGLE MODE UPDATE ===');
-        console.log('Booking ID:', params.booking_id);
-        console.log('Status ID:', params.status_id);
-        console.log('Miles Ref:', params.miles_ref);
-
-        console.log('Calling BizHandle API...');
         const result = await updateBooking({
           booking_id: Number(params.booking_id),
           status_id: statusId,
           delivered_date,
           delivered_time,
           client_name: clientName,
-          id_card: idCard,
-          signature: `data:image/png;base64,${signature}`,
+          id_card: idCard || '',
+          signature: signature ? `data:image/png;base64,${signature}` : '',
         });
-        console.log('BizHandle API result:', result);
 
-        console.log('Saving POD in background...');
         savePOD({
           booking_id: Number(params.booking_id),
           miles_ref: params.miles_ref as string || '',
           photos: photos,
           client_name: clientName,
-          id_card: idCard,
-          signature_base64: signature,
+          id_card: idCard || '',
+          signature_base64: signature || '',
           delivered_date,
           delivered_time,
           captured_by: user.id,
@@ -117,7 +112,6 @@ export default function SignatureScreen() {
           console.log('POD save completed successfully:', podResult);
         }).catch(err => {
           console.error('POD SAVE ERROR:', err);
-          console.error('Error details:', JSON.stringify(err, null, 2));
         });
 
         setLoading(false);
@@ -129,7 +123,7 @@ export default function SignatureScreen() {
           Alert.alert('Error', result.error || 'Update failed');
         }
       } else {
-        const bookingIds = JSON.parse(params.booking_ids as string);
+        const bookingIds = (params.booking_ids as string).split(',').map(Number);
         const milesRefs = params.miles_refs ? (params.miles_refs as string).split(',') : [];
         let successCount = 0;
         let failCount = 0;
@@ -144,8 +138,8 @@ export default function SignatureScreen() {
             delivered_date,
             delivered_time,
             client_name: clientName,
-            id_card: idCard,
-            signature: `data:image/png;base64,${signature}`,
+            id_card: idCard || '',
+            signature: signature ? `data:image/png;base64,${signature}` : '',
           });
 
           savePOD({
@@ -153,8 +147,8 @@ export default function SignatureScreen() {
             miles_ref: milesRef,
             photos: photos,
             client_name: clientName,
-            id_card: idCard,
-            signature_base64: signature,
+            id_card: idCard || '',
+            signature_base64: signature || '',
             delivered_date,
             delivered_time,
             captured_by: user.id,
@@ -221,11 +215,14 @@ export default function SignatureScreen() {
 
         <Text style={styles.title}>Customer Details</Text>
         <Text style={styles.subtitle}>
-          Please collect customer information and signature
+          {isPickedUp
+            ? 'Please enter customer name (ID and signature are optional)'
+            : 'Please collect customer information and signature'
+          }
         </Text>
 
-        <PhotoGallery 
-          photos={photos} 
+        <PhotoGallery
+          photos={photos}
           onRemovePhoto={(index) => {
             const newPhotos = photos.filter((_, i) => i !== index);
             setPhotos(newPhotos);
@@ -245,27 +242,36 @@ export default function SignatureScreen() {
           />
 
           <FormInput
-            label="ID Card Number"
+            label={isPickedUp ? "ID Card Number (Optional)" : "ID Card Number"}
             placeholder="Enter ID card number"
             value={idCard}
             onChangeText={setIdCard}
-            required
+            required={!isPickedUp}
           />
 
-          <View style={styles.signatureSection}>
-            <Text style={styles.signatureLabel}>
-              Customer Signature <Text style={styles.required}>*</Text>
-            </Text>
-            <SignatureCanvas onSignature={setSignature} />
-          </View>
+          {isPickedUp ? (
+            <View style={styles.optionalSignatureSection}>
+              <Text style={styles.optionalLabel}>Signature (Optional)</Text>
+              <SignatureCanvas onSignature={setSignature} />
+            </View>
+          ) : (
+            <View style={styles.signatureSection}>
+              <Text style={styles.signatureLabel}>
+                Customer Signature <Text style={styles.required}>*</Text>
+              </Text>
+              <SignatureCanvas onSignature={setSignature} />
+            </View>
+          )}
         </View>
 
         <TouchableOpacity
-          style={[styles.submitButton, (!clientName || !idCard || !signature) && styles.submitButtonDisabled]}
+          style={[styles.submitButton, !canSubmit() && styles.submitButtonDisabled]}
           onPress={handleUpdate}
-          disabled={!clientName || !idCard || !signature}
+          disabled={!canSubmit()}
         >
-          <Text style={styles.submitButtonText}>Update Booking with POD</Text>
+          <Text style={styles.submitButtonText}>
+            {isPickedUp ? 'Complete Pickup' : 'Update Booking with POD'}
+          </Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -332,6 +338,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
+    marginBottom: layouts.spacing.sm,
+  },
+  optionalSignatureSection: {
+    marginTop: layouts.spacing.md,
+  },
+  optionalLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textLight,
     marginBottom: layouts.spacing.sm,
   },
   required: {

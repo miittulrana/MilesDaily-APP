@@ -14,12 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/Colors';
 import { layouts } from '../constants/layouts';
-import {
-    RESCHEDULED_DELIVERY_STATUS_ID,
-    PARTIAL_DELIVERY_STATUS_ID,
-    SHIPMENT_REFUSED_STATUS_ID,
-    getReasonPlaceholder,
-} from '../lib/statusHelpers';
+import { getReasonPlaceholder, getReasonExamples, getStatusUIContent } from '../lib/remoteConfig';
 
 interface ReasonInputModalProps {
     visible: boolean;
@@ -28,6 +23,10 @@ interface ReasonInputModalProps {
     onSubmit: (reason: string, piecesMissing?: number) => void;
     onCancel: () => void;
 }
+
+const PARTIAL_DELIVERY_STATUS_ID = 23;
+const RESCHEDULED_DELIVERY_STATUS_ID = 31;
+const SHIPMENT_REFUSED_STATUS_ID = 38;
 
 export default function ReasonInputModal({
     visible,
@@ -38,8 +37,18 @@ export default function ReasonInputModal({
 }: ReasonInputModalProps) {
     const [reason, setReason] = useState('');
     const [piecesMissing, setPiecesMissing] = useState('');
+    const [placeholder, setPlaceholder] = useState('Enter reason...');
+    const [examples, setExamples] = useState<string[]>([]);
+    const [iconName, setIconName] = useState<any>('document-text-outline');
+    const [iconColor, setIconColor] = useState('#ff6b00');
 
     const isPartialDelivery = statusId === PARTIAL_DELIVERY_STATUS_ID;
+
+    useEffect(() => {
+        if (visible) {
+            loadRemoteContent();
+        }
+    }, [visible, statusId]);
 
     useEffect(() => {
         if (!visible) {
@@ -47,6 +56,90 @@ export default function ReasonInputModal({
             setPiecesMissing('');
         }
     }, [visible]);
+
+    const loadRemoteContent = async () => {
+        try {
+            const [remotePlaceholder, remoteExamples, uiContent] = await Promise.all([
+                getReasonPlaceholder(statusId),
+                getReasonExamples(statusId),
+                getStatusUIContent(statusId),
+            ]);
+
+            setPlaceholder(remotePlaceholder || getDefaultPlaceholder(statusId));
+            setExamples(remoteExamples.length > 0 ? remoteExamples : getDefaultExamples(statusId));
+
+            if (uiContent) {
+                setIconName(uiContent.icon_name || getDefaultIcon(statusId));
+                setIconColor(uiContent.icon_color || getDefaultIconColor(statusId));
+            }
+        } catch (error) {
+            console.error('Error loading remote content for ReasonInputModal:', error);
+            setPlaceholder(getDefaultPlaceholder(statusId));
+            setExamples(getDefaultExamples(statusId));
+            setIconName(getDefaultIcon(statusId));
+            setIconColor(getDefaultIconColor(statusId));
+        }
+    };
+
+    const getDefaultPlaceholder = (id: number): string => {
+        switch (id) {
+            case RESCHEDULED_DELIVERY_STATUS_ID:
+                return 'e.g., Customer wants delivery on Monday, Office closed try tomorrow';
+            case PARTIAL_DELIVERY_STATUS_ID:
+                return 'e.g., 2 pieces missing, 1 box missing';
+            case SHIPMENT_REFUSED_STATUS_ID:
+                return 'e.g., Customer changed mind, Customer did not order this, Customer cannot pay COD';
+            default:
+                return 'Enter reason...';
+        }
+    };
+
+    const getDefaultExamples = (id: number): string[] => {
+        switch (id) {
+            case RESCHEDULED_DELIVERY_STATUS_ID:
+                return [
+                    'Customer wants delivery on Monday',
+                    'Office closed, try tomorrow',
+                    'Customer on holiday until Friday',
+                ];
+            case PARTIAL_DELIVERY_STATUS_ID:
+                return ['2 pieces missing', '1 box missing', '3 items not delivered'];
+            case SHIPMENT_REFUSED_STATUS_ID:
+                return [
+                    'Customer changed mind',
+                    'Customer did not order this',
+                    'Customer cannot pay COD',
+                ];
+            default:
+                return [];
+        }
+    };
+
+    const getDefaultIcon = (id: number): any => {
+        switch (id) {
+            case RESCHEDULED_DELIVERY_STATUS_ID:
+                return 'calendar-outline';
+            case PARTIAL_DELIVERY_STATUS_ID:
+                return 'cube-outline';
+            case SHIPMENT_REFUSED_STATUS_ID:
+                return 'ban-outline';
+            default:
+                return 'document-text-outline';
+        }
+    };
+
+    const getDefaultIconColor = (id: number): string => {
+        switch (id) {
+            case RESCHEDULED_DELIVERY_STATUS_ID:
+                return '#f59e0b';
+            case PARTIAL_DELIVERY_STATUS_ID:
+                return '#f97316';
+            case SHIPMENT_REFUSED_STATUS_ID:
+                return '#ef4444';
+            default:
+                return colors.primary;
+        }
+    };
 
     const handleSubmit = () => {
         if (!reason.trim()) {
@@ -75,66 +168,11 @@ export default function ReasonInputModal({
         Keyboard.dismiss();
     };
 
-    const getIcon = (): any => {
-        switch (statusId) {
-            case RESCHEDULED_DELIVERY_STATUS_ID:
-                return 'calendar-outline';
-            case PARTIAL_DELIVERY_STATUS_ID:
-                return 'cube-outline';
-            case SHIPMENT_REFUSED_STATUS_ID:
-                return 'ban-outline';
-            default:
-                return 'document-text-outline';
-        }
-    };
-
-    const getIconColor = () => {
-        switch (statusId) {
-            case RESCHEDULED_DELIVERY_STATUS_ID:
-                return '#f59e0b';
-            case PARTIAL_DELIVERY_STATUS_ID:
-                return '#f97316';
-            case SHIPMENT_REFUSED_STATUS_ID:
-                return '#ef4444';
-            default:
-                return colors.primary;
-        }
-    };
-
-    const getExamples = () => {
-        switch (statusId) {
-            case RESCHEDULED_DELIVERY_STATUS_ID:
-                return [
-                    'Customer wants delivery on Monday',
-                    'Office closed, try tomorrow',
-                    'Customer on holiday until Friday',
-                ];
-            case PARTIAL_DELIVERY_STATUS_ID:
-                return [
-                    '2 pieces missing',
-                    '1 box missing',
-                    '3 items not delivered',
-                ];
-            case SHIPMENT_REFUSED_STATUS_ID:
-                return [
-                    'Customer changed mind',
-                    'Customer did not order this',
-                    'Customer cannot pay COD',
-                ];
-            default:
-                return [];
-        }
-    };
-
-    const isValid = reason.trim().length > 0 && (!isPartialDelivery || piecesMissing.trim().length > 0);
+    const isValid =
+        reason.trim().length > 0 && (!isPartialDelivery || piecesMissing.trim().length > 0);
 
     return (
-        <Modal
-            visible={visible}
-            animationType="slide"
-            transparent={false}
-            onRequestClose={handleClose}
-        >
+        <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={handleClose}>
             <SafeAreaView style={styles.container}>
                 <TouchableWithoutFeedback onPress={dismissKeyboard}>
                     <View style={styles.innerContainer}>
@@ -146,13 +184,13 @@ export default function ReasonInputModal({
                             <View style={{ width: 40 }} />
                         </View>
 
-                        <ScrollView 
+                        <ScrollView
                             style={styles.scrollContent}
                             contentContainerStyle={styles.scrollContentContainer}
                             keyboardShouldPersistTaps="handled"
                         >
-                            <View style={[styles.iconContainer, { backgroundColor: `${getIconColor()}20` }]}>
-                                <Ionicons name={getIcon()} size={48} color={getIconColor()} />
+                            <View style={[styles.iconContainer, { backgroundColor: `${iconColor}20` }]}>
+                                <Ionicons name={iconName} size={48} color={iconColor} />
                             </View>
 
                             <View style={styles.mandatoryBadge}>
@@ -184,7 +222,7 @@ export default function ReasonInputModal({
                                     style={styles.textInput}
                                     value={reason}
                                     onChangeText={setReason}
-                                    placeholder={getReasonPlaceholder(statusId)}
+                                    placeholder={placeholder}
                                     placeholderTextColor={colors.gray400}
                                     multiline
                                     numberOfLines={4}
@@ -195,38 +233,34 @@ export default function ReasonInputModal({
                                 />
                             </View>
 
-                            <View style={styles.examplesSection}>
-                                <Text style={styles.examplesTitle}>EXAMPLES:</Text>
-                                {getExamples().map((example, index) => (
-                                    <TouchableOpacity
-                                        key={index}
-                                        style={styles.exampleItem}
-                                        onPress={() => {
-                                            setReason(example);
-                                            dismissKeyboard();
-                                        }}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Ionicons name="arrow-forward" size={16} color={colors.primary} />
-                                        <Text style={styles.exampleText}>{example}</Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
+                            {examples.length > 0 && (
+                                <View style={styles.examplesSection}>
+                                    <Text style={styles.examplesTitle}>EXAMPLES:</Text>
+                                    {examples.map((example, index) => (
+                                        <TouchableOpacity
+                                            key={index}
+                                            style={styles.exampleItem}
+                                            onPress={() => {
+                                                setReason(example);
+                                                dismissKeyboard();
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Ionicons name="arrow-forward" size={16} color={colors.primary} />
+                                            <Text style={styles.exampleText}>{example}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            )}
                         </ScrollView>
 
                         <View style={styles.footer}>
-                            <TouchableOpacity
-                                style={styles.cancelButton}
-                                onPress={handleClose}
-                            >
+                            <TouchableOpacity style={styles.cancelButton} onPress={handleClose}>
                                 <Text style={styles.cancelButtonText}>Cancel</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity
-                                style={[
-                                    styles.submitButton,
-                                    !isValid && styles.submitButtonDisabled,
-                                ]}
+                                style={[styles.submitButton, !isValid && styles.submitButtonDisabled]}
                                 onPress={handleSubmit}
                                 disabled={!isValid}
                             >

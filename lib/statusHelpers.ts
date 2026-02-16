@@ -1,6 +1,19 @@
 import { supabaseBizhandle } from './bizhandleClient';
 import { supabase } from './supabase';
 import { Booking } from './bizhandleTypes';
+import {
+    isLeftMessageStatus as isRemoteLeftMessageStatus,
+    getValidationRulesForStatus,
+    getBlockingRule,
+    getRequiresPreviousRule,
+    getDailyLimitRule,
+    getLeftMessageStatuses,
+} from './remoteConfig';
+import {
+    getReasonPlaceholder as getRemoteReasonPlaceholder,
+    getReasonExamples as getRemoteReasonExamples,
+    getStatusInstructions as getRemoteStatusInstructions,
+} from './remoteConfig';
 
 export const LEFT_MESSAGE_NOTE_1_STATUS_ID = 17;
 export const LEFT_MESSAGE_NOTE_2_STATUS_ID = 52;
@@ -12,34 +25,6 @@ export const ON_HOLD_FOR_PICKUP_STATUS_ID = 22;
 export const PARTIAL_DELIVERY_STATUS_ID = 23;
 export const SHIPMENT_REFUSED_STATUS_ID = 38;
 export const DELIVERED_STATUS_ID = 10;
-
-export const CALL_REQUIRED_STATUSES = [
-    LEFT_MESSAGE_NOTE_1_STATUS_ID,
-    LEFT_MESSAGE_NOTE_2_STATUS_ID,
-    ON_HOLD_FOR_PICKUP_STATUS_ID,
-];
-
-export const PHOTO_REQUIRED_STATUSES = [
-    LEFT_MESSAGE_NOTE_1_STATUS_ID,
-    LEFT_MESSAGE_NOTE_2_STATUS_ID,
-    WRONG_CASE_PACKAGING_STATUS_ID,
-    CORRECT_CONTACT_DETAILS_STATUS_ID,
-];
-
-export const REASON_REQUIRED_STATUSES = [
-    RESCHEDULED_DELIVERY_STATUS_ID,
-    PARTIAL_DELIVERY_STATUS_ID,
-    SHIPMENT_REFUSED_STATUS_ID,
-];
-
-export const TWO_STEP_STATUSES = [
-    COD_CASH_COLLECTED_STATUS_ID,
-];
-
-export const LEFT_MESSAGE_STATUSES = [
-    LEFT_MESSAGE_NOTE_1_STATUS_ID,
-    LEFT_MESSAGE_NOTE_2_STATUS_ID,
-];
 
 export interface CODInfo {
     hasCOD: boolean;
@@ -71,7 +56,9 @@ export interface LeftMessageCheckResult {
     message?: string;
 }
 
-export const parseCODFromSpecialInstruction = (specialInstruction: string | null | undefined): CODInfo => {
+export const parseCODFromSpecialInstruction = (
+    specialInstruction: string | null | undefined
+): CODInfo => {
     if (!specialInstruction) {
         return { hasCOD: false, amount: null, currency: 'EUR', rawText: null };
     }
@@ -106,7 +93,7 @@ export const parseCODFromSpecialInstruction = (specialInstruction: string | null
     }
 
     const hasCODMention = /\bCOD\b|cash\s+on\s+delivery/i.test(specialInstruction);
-    
+
     return {
         hasCOD: hasCODMention,
         amount: null,
@@ -118,21 +105,21 @@ export const parseCODFromSpecialInstruction = (specialInstruction: string | null
 export const getStatusHistory = async (bookingId: number): Promise<StatusHistoryItem[]> => {
     try {
         const query = `
-            SELECT 
-                booking_status_id,
-                booking_id,
-                status_id,
-                delivered_date,
-                delivered_time,
-                created_at
-            FROM miles_production.booking_status
-            WHERE booking_id = ${bookingId}
-              AND deleted_at IS NULL
-            ORDER BY delivered_date ASC, delivered_time ASC
-        `;
+      SELECT 
+        booking_status_id,
+        booking_id,
+        status_id,
+        delivered_date,
+        delivered_time,
+        created_at
+      FROM miles_production.booking_status
+      WHERE booking_id = ${bookingId}
+        AND deleted_at IS NULL
+      ORDER BY delivered_date ASC, delivered_time ASC
+    `;
 
         const { data, error } = await supabaseBizhandle.rpc('execute_sql', {
-            sql: query
+            sql: query,
         });
 
         if (error) {
@@ -150,16 +137,16 @@ export const getStatusHistory = async (bookingId: number): Promise<StatusHistory
 export const hasStatusInHistory = async (bookingId: number, statusId: number): Promise<boolean> => {
     try {
         const query = `
-            SELECT booking_status_id
-            FROM miles_production.booking_status
-            WHERE booking_id = ${bookingId}
-              AND status_id = ${statusId}
-              AND deleted_at IS NULL
-            LIMIT 1
-        `;
+      SELECT booking_status_id
+      FROM miles_production.booking_status
+      WHERE booking_id = ${bookingId}
+        AND status_id = ${statusId}
+        AND deleted_at IS NULL
+      LIMIT 1
+    `;
 
         const { data, error } = await supabaseBizhandle.rpc('execute_sql', {
-            sql: query
+            sql: query,
         });
 
         if (error) {
@@ -167,7 +154,7 @@ export const hasStatusInHistory = async (bookingId: number, statusId: number): P
             return false;
         }
 
-        return (data && data.length > 0);
+        return data && data.length > 0;
     } catch (error) {
         console.error('Error in hasStatusInHistory:', error);
         return false;
@@ -178,41 +165,34 @@ export const checkLeftMessageDailyCount = async (
     statusId: number,
     bookingRef?: string
 ): Promise<LeftMessageCheckResult> => {
-    if (!LEFT_MESSAGE_STATUSES.includes(statusId)) {
+    const isLeftMessage = await isRemoteLeftMessageStatus(statusId);
+    if (!isLeftMessage) {
         return { warning: false, count: 0 };
     }
 
     try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
+        const {
+            data: { session },
+        } = await supabase.auth.getSession();
+
         if (!session?.access_token) {
             console.log('No auth session for left message check - skipping');
             return { warning: false, count: 0 };
         }
 
         const url = 'https://fleet.milesxp.com/api/drivers/left-message-warning';
-        
-        console.log('=== LEFT MESSAGE CHECK ===');
-        console.log('URL:', url);
-        console.log('Status ID:', statusId);
-        console.log('Booking Ref:', bookingRef);
-        console.log('Has Token:', !!session.access_token);
-        console.log('Token Preview:', session.access_token.substring(0, 20) + '...');
 
         const response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.access_token}`,
+                Authorization: `Bearer ${session.access_token}`,
             },
             body: JSON.stringify({
                 status_id: statusId,
                 booking_ref: bookingRef,
             }),
         });
-
-        console.log('Response Status:', response.status);
-        console.log('Response OK:', response.ok);
 
         if (!response.ok) {
             const errorText = await response.text();
@@ -221,8 +201,7 @@ export const checkLeftMessageDailyCount = async (
         }
 
         const result = await response.json();
-        console.log('Left message warning API result:', result);
-        
+
         return {
             warning: result.warning || false,
             count: result.count || 0,
@@ -234,39 +213,56 @@ export const checkLeftMessageDailyCount = async (
     }
 };
 
-export const validateLeftMessageNote1 = async (bookingId: number): Promise<StatusValidationResult> => {
-    const hasNote1 = await hasStatusInHistory(bookingId, LEFT_MESSAGE_NOTE_1_STATUS_ID);
-    
-    if (hasNote1) {
-        return {
-            allowed: false,
-            error: 'Left Message Note 1 has already been used for this parcel. You cannot use it again.',
-            warning: 'Use Left Message Note 2 instead.',
-        };
+export const validateLeftMessageNote1 = async (
+    bookingId: number
+): Promise<StatusValidationResult> => {
+    const blockingRule = await getBlockingRule(LEFT_MESSAGE_NOTE_1_STATUS_ID);
+
+    if (blockingRule) {
+        const hasNote1 = await hasStatusInHistory(bookingId, LEFT_MESSAGE_NOTE_1_STATUS_ID);
+
+        if (hasNote1) {
+            return {
+                allowed: false,
+                error: blockingRule.error_message,
+                warning: blockingRule.warning_message,
+                suggestedStatusId: blockingRule.suggested_status_id,
+            };
+        }
     }
 
     return { allowed: true };
 };
 
-export const validateLeftMessageNote2 = async (bookingId: number): Promise<StatusValidationResult> => {
-    const hasNote1 = await hasStatusInHistory(bookingId, LEFT_MESSAGE_NOTE_1_STATUS_ID);
-    
-    if (!hasNote1) {
-        return {
-            allowed: false,
-            error: 'You must use Left Message Note 1 before using Note 2.',
-        };
+export const validateLeftMessageNote2 = async (
+    bookingId: number
+): Promise<StatusValidationResult> => {
+    const requiresRule = await getRequiresPreviousRule(LEFT_MESSAGE_NOTE_2_STATUS_ID);
+
+    if (requiresRule) {
+        const hasNote1 = await hasStatusInHistory(bookingId, requiresRule.condition_status_id!);
+
+        if (!hasNote1) {
+            return {
+                allowed: false,
+                error: requiresRule.error_message,
+            };
+        }
     }
 
-    const hasNote2 = await hasStatusInHistory(bookingId, LEFT_MESSAGE_NOTE_2_STATUS_ID);
-    
-    if (hasNote2) {
-        return {
-            allowed: false,
-            error: 'Left Message Note 2 has already been used for this parcel. You cannot use it again.',
-            warning: 'Use "Shipment Refused" instead (only when agreed with PD).',
-            suggestedStatusId: SHIPMENT_REFUSED_STATUS_ID,
-        };
+    const blockingRule = await getBlockingRule(LEFT_MESSAGE_NOTE_2_STATUS_ID);
+
+    if (blockingRule) {
+        const hasNote2 = await hasStatusInHistory(bookingId, LEFT_MESSAGE_NOTE_2_STATUS_ID);
+
+        if (hasNote2) {
+            return {
+                allowed: false,
+                error: blockingRule.error_message,
+                warning: blockingRule.warning_message,
+                suggestedStatusId: blockingRule.suggested_status_id,
+            };
+        }
     }
 
     return { allowed: true };
@@ -280,115 +276,63 @@ export const validateStatusSelection = async (
     switch (statusId) {
         case LEFT_MESSAGE_NOTE_1_STATUS_ID:
             return await validateLeftMessageNote1(bookingId);
-        
+
         case LEFT_MESSAGE_NOTE_2_STATUS_ID:
             return await validateLeftMessageNote2(bookingId);
-        
+
         case COD_CASH_COLLECTED_STATUS_ID:
             return { allowed: true };
-        
+
         default:
             return { allowed: true };
     }
 };
 
-export const isCallRequired = (statusId: number): boolean => {
-    return CALL_REQUIRED_STATUSES.includes(statusId);
+export const isCallRequired = async (statusId: number): Promise<boolean> => {
+    const { isCallRequired: checkCallRequired } = await import('./remoteConfig');
+    return checkCallRequired(statusId);
 };
 
-export const isPhotoRequired = (statusId: number): boolean => {
-    return PHOTO_REQUIRED_STATUSES.includes(statusId);
+export const isPhotoRequired = async (statusId: number): Promise<boolean> => {
+    const { isPhotoRequired: checkPhotoRequired } = await import('./remoteConfig');
+    return checkPhotoRequired(statusId);
 };
 
-export const isReasonRequired = (statusId: number): boolean => {
-    return REASON_REQUIRED_STATUSES.includes(statusId);
+export const isReasonRequired = async (statusId: number): Promise<boolean> => {
+    const { isReasonRequired: checkReasonRequired } = await import('./remoteConfig');
+    return checkReasonRequired(statusId);
 };
 
-export const isTwoStepStatus = (statusId: number): boolean => {
-    return TWO_STEP_STATUSES.includes(statusId);
+export const isTwoStepStatus = async (statusId: number): Promise<boolean> => {
+    const { isTwoStepStatus: checkTwoStep } = await import('./remoteConfig');
+    return checkTwoStep(statusId);
 };
 
-export const isLeftMessageStatus = (statusId: number): boolean => {
-    return LEFT_MESSAGE_STATUSES.includes(statusId);
+export const isLeftMessageStatus = async (statusId: number): Promise<boolean> => {
+    return isRemoteLeftMessageStatus(statusId);
 };
 
-export const getStatusRequirements = (statusId: number): {
+export const getStatusRequirements = async (
+    statusId: number
+): Promise<{
     callRequired: boolean;
     photoRequired: boolean;
     reasonRequired: boolean;
     twoStep: boolean;
     customerConfirmation: boolean;
-} => {
-    return {
-        callRequired: isCallRequired(statusId),
-        photoRequired: isPhotoRequired(statusId),
-        reasonRequired: isReasonRequired(statusId),
-        twoStep: isTwoStepStatus(statusId),
-        customerConfirmation: statusId === DELIVERED_STATUS_ID,
-    };
+}> => {
+    const { getStatusRequirements: getRemoteRequirements } = await import('./remoteConfig');
+    return getRemoteRequirements(statusId);
 };
 
-export const getReasonPlaceholder = (statusId: number): string => {
-    switch (statusId) {
-        case RESCHEDULED_DELIVERY_STATUS_ID:
-            return 'e.g., Customer wants delivery on Monday, Office closed try tomorrow';
-        case PARTIAL_DELIVERY_STATUS_ID:
-            return 'e.g., 2 pieces missing, 1 box missing';
-        case SHIPMENT_REFUSED_STATUS_ID:
-            return 'e.g., Customer changed mind, Customer did not order this, Customer cannot pay COD';
-        default:
-            return 'Enter reason...';
-    }
+export const getReasonPlaceholder = async (statusId: number): Promise<string> => {
+    return getRemoteReasonPlaceholder(statusId);
 };
 
-export const getStatusInstructions = (statusId: number): string[] => {
-    switch (statusId) {
-        case LEFT_MESSAGE_NOTE_1_STATUS_ID:
-            return [
-                'CALL the customer first!',
-                'Confirm: "I called the customer"',
-                'Take PHOTO of location + Note',
-            ];
-        case LEFT_MESSAGE_NOTE_2_STATUS_ID:
-            return [
-                'CALL the customer first!',
-                'Confirm: "I called the customer"',
-                'Take PHOTO of location',
-            ];
-        case COD_CASH_COLLECTED_STATUS_ID:
-            return [
-                'Select "COD/Cash Collected"',
-                'Confirm the amount you collected / Or Write if different',
-                'Then scan again → "Delivered"',
-            ];
-        case WRONG_CASE_PACKAGING_STATUS_ID:
-            return [
-                'Take PHOTO of the parcel',
-                'Show the damage or problem clearly!',
-            ];
-        case CORRECT_CONTACT_DETAILS_STATUS_ID:
-            return [
-                'Take PHOTO of parcel',
-            ];
-        case RESCHEDULED_DELIVERY_STATUS_ID:
-            return [
-                'Write the REASON (mandatory)',
-            ];
-        case ON_HOLD_FOR_PICKUP_STATUS_ID:
-            return [
-                'CALL the customer first!',
-                'Confirm they will pick up',
-                'Click confirmation: "I confirmed that I called the customer"',
-            ];
-        case PARTIAL_DELIVERY_STATUS_ID:
-            return [
-                'Write HOW MANY pieces are missing (mandatory)',
-            ];
-        case SHIPMENT_REFUSED_STATUS_ID:
-            return [
-                'Write the REASON (mandatory)',
-            ];
-        default:
-            return [];
-    }
+export const getStatusInstructions = async (statusId: number): Promise<string[]> => {
+    return getRemoteStatusInstructions(statusId);
+};
+
+export const getReasonExamples = async (statusId: number): Promise<string[]> => {
+    return getRemoteReasonExamples(statusId);
 };

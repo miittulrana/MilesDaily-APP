@@ -1,18 +1,31 @@
-import { useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View, FlatList, Alert, ActivityIndicator } from 'react-native';
+import { useState, useEffect } from 'react';
+import {
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  FlatList,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/Colors';
 import { layouts } from '../constants/layouts';
 import { Status } from '../lib/bizhandleTypes';
-import { 
-  DriverType, 
-  getStatusesForDriverTypes, 
+import {
+  getStatusesForDriverTypes,
   isWarehouseScanStatus,
-  DELIVERED_STATUS_ID,
-  isCallRequired,
-  isPhotoRequired,
-  isReasonRequired,
-  isTwoStepStatus,
+  getStatusRequirements,
+  getDeliveredStatusId,
+} from '../lib/remoteConfig';
+import {
+  getStatusesForDriverTypesSync,
+  isCallRequiredSync,
+  isPhotoRequiredSync,
+  isReasonRequiredSync,
+  isTwoStepStatusSync,
+  isWarehouseScanStatusSync,
+  DriverType,
 } from '../lib/statusPermissions';
 import { checkWarehouseLocation } from '../lib/geofenceService';
 import { ensureConnection, withRetry } from '../lib/supabase';
@@ -22,31 +35,83 @@ interface StatusSelectorProps {
   driverTypes?: DriverType[];
   currentStatusId?: number;
   onSelect: (status: Status) => void;
-  onStatusRequirementCheck?: (status: Status, requirements: {
-    callRequired: boolean;
-    photoRequired: boolean;
-    reasonRequired: boolean;
-    twoStep: boolean;
-  }) => void;
+  onStatusRequirementCheck?: (
+    status: Status,
+    requirements: {
+      callRequired: boolean;
+      photoRequired: boolean;
+      reasonRequired: boolean;
+      twoStep: boolean;
+    }
+  ) => void;
 }
 
-export default function StatusSelector({ 
-  statuses, 
-  driverTypes = [], 
-  currentStatusId, 
+export default function StatusSelector({
+  statuses,
+  driverTypes = [],
+  currentStatusId,
   onSelect,
   onStatusRequirementCheck,
 }: StatusSelectorProps) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [checkingLocation, setCheckingLocation] = useState(false);
+  const [allowedStatusIds, setAllowedStatusIds] = useState<number[]>([]);
+  const [deliveredStatusId, setDeliveredStatusId] = useState<number>(10);
+  const [statusRequirementsCache, setStatusRequirementsCache] = useState<
+    Record<
+      number,
+      {
+        callRequired: boolean;
+        photoRequired: boolean;
+        reasonRequired: boolean;
+        twoStep: boolean;
+        customerConfirmation: boolean;
+      }
+    >
+  >({});
 
-  const allowedStatusIds = getStatusesForDriverTypes(driverTypes);
+  useEffect(() => {
+    loadRemoteConfig();
+  }, [driverTypes]);
 
-  const filteredStatuses = driverTypes.length > 0
-    ? statuses.filter(status => allowedStatusIds.includes(status.status_id))
-    : statuses;
+  const loadRemoteConfig = async () => {
+    try {
+      const [remoteAllowedIds, remoteDeliveredId] = await Promise.all([
+        getStatusesForDriverTypes(driverTypes),
+        getDeliveredStatusId(),
+      ]);
 
-  const isAlreadyDelivered = currentStatusId === DELIVERED_STATUS_ID;
+      if (remoteAllowedIds.length > 0) {
+        setAllowedStatusIds(remoteAllowedIds);
+      } else {
+        setAllowedStatusIds(getStatusesForDriverTypesSync(driverTypes));
+      }
+
+      setDeliveredStatusId(remoteDeliveredId);
+
+      const requirementsPromises = statuses.map(async (status) => {
+        const req = await getStatusRequirements(status.status_id);
+        return { statusId: status.status_id, requirements: req };
+      });
+
+      const results = await Promise.all(requirementsPromises);
+      const cache: Record<number, any> = {};
+      results.forEach((r) => {
+        cache[r.statusId] = r.requirements;
+      });
+      setStatusRequirementsCache(cache);
+    } catch (error) {
+      console.error('Error loading remote config for StatusSelector:', error);
+      setAllowedStatusIds(getStatusesForDriverTypesSync(driverTypes));
+    }
+  };
+
+  const filteredStatuses =
+    driverTypes.length > 0
+      ? statuses.filter((status) => allowedStatusIds.includes(status.status_id))
+      : statuses;
+
+  const isAlreadyDelivered = currentStatusId === deliveredStatusId;
 
   const showConnectionError = () => {
     Alert.alert(
@@ -66,7 +131,9 @@ export default function StatusSelector({
       return;
     }
 
-    if (isWarehouseScanStatus(status.status_id)) {
+    const isWarehouse = await isWarehouseScanStatus(status.status_id);
+
+    if (isWarehouse) {
       setCheckingLocation(true);
 
       try {
@@ -85,7 +152,8 @@ export default function StatusSelector({
         if (!result.allowed) {
           Alert.alert(
             'Location Required',
-            result.error || 'You are not in the warehouse at the moment, kindly scan in the warehouse, it will work',
+            result.error ||
+            'You are not in the warehouse at the moment, kindly scan in the warehouse, it will work',
             [{ text: 'OK' }]
           );
           setCheckingLocation(false);
@@ -95,7 +163,13 @@ export default function StatusSelector({
         console.error('Warehouse location check error:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-        if (errorMessage.includes('timeout') || errorMessage.includes('Timeout') || errorMessage.includes('network') || errorMessage.includes('Network') || errorMessage.includes('aborted')) {
+        if (
+          errorMessage.includes('timeout') ||
+          errorMessage.includes('Timeout') ||
+          errorMessage.includes('network') ||
+          errorMessage.includes('Network') ||
+          errorMessage.includes('aborted')
+        ) {
           showConnectionError();
         } else {
           Alert.alert(
@@ -111,17 +185,19 @@ export default function StatusSelector({
       setCheckingLocation(false);
     }
 
-    const requirements = {
-      callRequired: isCallRequired(status.status_id),
-      photoRequired: isPhotoRequired(status.status_id),
-      reasonRequired: isReasonRequired(status.status_id),
-      twoStep: isTwoStepStatus(status.status_id),
+    const cachedRequirements = statusRequirementsCache[status.status_id];
+
+    const requirements = cachedRequirements || {
+      callRequired: isCallRequiredSync(status.status_id),
+      photoRequired: isPhotoRequiredSync(status.status_id),
+      reasonRequired: isReasonRequiredSync(status.status_id),
+      twoStep: isTwoStepStatusSync(status.status_id),
     };
 
-    const hasSpecialRequirements = 
-      requirements.callRequired || 
-      requirements.photoRequired || 
-      requirements.reasonRequired || 
+    const hasSpecialRequirements =
+      requirements.callRequired ||
+      requirements.photoRequired ||
+      requirements.reasonRequired ||
       requirements.twoStep;
 
     if (hasSpecialRequirements && onStatusRequirementCheck) {
@@ -135,45 +211,51 @@ export default function StatusSelector({
 
   const renderItem = ({ item }: { item: Status }) => {
     const isSelected = selectedId === item.status_id;
-    const isWarehouseScan = isWarehouseScanStatus(item.status_id);
+    const isWarehouseScan = isWarehouseScanStatusSync(item.status_id);
     const isDisabled = isAlreadyDelivered;
-    
-    const callRequired = isCallRequired(item.status_id);
-    const photoRequired = isPhotoRequired(item.status_id);
-    const reasonRequired = isReasonRequired(item.status_id);
-    const twoStep = isTwoStepStatus(item.status_id);
+
+    const cached = statusRequirementsCache[item.status_id];
+    const callRequired = cached?.callRequired ?? isCallRequiredSync(item.status_id);
+    const photoRequired = cached?.photoRequired ?? isPhotoRequiredSync(item.status_id);
+    const reasonRequired = cached?.reasonRequired ?? isReasonRequiredSync(item.status_id);
+    const twoStep = cached?.twoStep ?? isTwoStepStatusSync(item.status_id);
 
     return (
       <TouchableOpacity
         style={[
           styles.statusCard,
           isSelected && styles.statusCardSelected,
-          isDisabled && styles.statusCardDisabled
+          isDisabled && styles.statusCardDisabled,
         ]}
         onPress={() => handleSelect(item)}
         activeOpacity={0.7}
         disabled={checkingLocation}
       >
         <View style={styles.statusContent}>
-          <View style={[
-            styles.iconContainer,
-            isSelected && styles.iconContainerSelected,
-            isDisabled && styles.iconContainerDisabled
-          ]}>
+          <View
+            style={[
+              styles.iconContainer,
+              isSelected && styles.iconContainerSelected,
+              isDisabled && styles.iconContainerDisabled,
+            ]}
+          >
             <Ionicons
               name={getStatusIcon(item.name)}
               size={24}
-              color={isDisabled ? colors.gray400 : (isSelected ? colors.background : colors.primary)}
+              color={isDisabled ? colors.gray400 : isSelected ? colors.background : colors.primary}
             />
           </View>
-          <Text style={[
-            styles.statusText,
-            isSelected && styles.statusTextSelected,
-            isDisabled && styles.statusTextDisabled
-          ]} numberOfLines={2}>
+          <Text
+            style={[
+              styles.statusText,
+              isSelected && styles.statusTextSelected,
+              isDisabled && styles.statusTextDisabled,
+            ]}
+            numberOfLines={2}
+          >
             {item.name}
           </Text>
-          
+
           <View style={styles.badgeContainer}>
             {item.need_customer_confirmation && (
               <View style={[styles.badge, styles.signatureBadge, isDisabled && styles.badgeDisabled]}>
@@ -239,7 +321,7 @@ export default function StatusSelector({
           </Text>
         </View>
       )}
-      
+
       <View style={styles.legendContainer}>
         <View style={styles.legendItem}>
           <View style={[styles.legendBadge, styles.callBadge]}>

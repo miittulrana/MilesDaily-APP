@@ -4,7 +4,12 @@ import { StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
-import { isBizhandleLoggedIn, getBizhandleUser, logoutFromBizhandle } from '../../../lib/bizhandleAuth';
+import {
+  isBizhandleLoggedIn,
+  getBizhandleUser,
+  logoutFromBizhandle,
+} from '../../../lib/bizhandleAuth';
+import { initRemoteConfig } from '../../../lib/remoteConfig';
 import LoadingIndicator from '../../../components/LoadingIndicator';
 
 export default function BookingsIndexScreen() {
@@ -12,14 +17,28 @@ export default function BookingsIndexScreen() {
   const [loading, setLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userName, setUserName] = useState('');
+  const [configInitialized, setConfigInitialized] = useState(false);
 
   useEffect(() => {
-    checkLoginStatus();
+    initializeApp();
   }, []);
+
+  const initializeApp = async () => {
+    try {
+      setLoading(true);
+
+      await initRemoteConfig();
+      setConfigInitialized(true);
+
+      await checkLoginStatus();
+    } catch (error) {
+      console.error('App initialization error:', error);
+      await checkLoginStatus();
+    }
+  };
 
   const checkLoginStatus = async () => {
     try {
-      setLoading(true);
       const loggedIn = await isBizhandleLoggedIn();
       setIsLoggedIn(loggedIn);
 
@@ -39,25 +58,21 @@ export default function BookingsIndexScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout from Bizhandle?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            await logoutFromBizhandle();
-            router.push('/(dashboard)/bookings/login');
-          },
+    Alert.alert('Logout', 'Are you sure you want to logout from Bizhandle?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: async () => {
+          await logoutFromBizhandle();
+          router.push('/(dashboard)/bookings/login');
         },
-      ]
-    );
+      },
+    ]);
   };
 
   if (loading) {
-    return <LoadingIndicator fullScreen message="Loading..." />;
+    return <LoadingIndicator fullScreen message="Initializing..." />;
   }
 
   if (!isLoggedIn) {
@@ -98,6 +113,13 @@ export default function BookingsIndexScreen() {
           <Text style={styles.moduleDescription}>Scan multiple barcodes</Text>
         </TouchableOpacity>
       </View>
+
+      {!configInitialized && (
+        <View style={styles.offlineBanner}>
+          <Ionicons name="cloud-offline-outline" size={16} color={colors.warning} />
+          <Text style={styles.offlineBannerText}>Using offline configuration</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -160,5 +182,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textLight,
     textAlign: 'center',
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fef3c7',
+    padding: layouts.spacing.sm,
+    gap: layouts.spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: '#f59e0b',
+  },
+  offlineBannerText: {
+    fontSize: 12,
+    color: '#92400e',
+    fontWeight: '500',
   },
 });

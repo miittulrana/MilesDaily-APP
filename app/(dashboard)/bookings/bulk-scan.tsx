@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -63,6 +63,9 @@ export default function BulkScanScreen() {
   const [bulkReason, setBulkReason] = useState<string>('');
   const [bulkPhotos, setBulkPhotos] = useState<CompressedImage[]>([]);
 
+  const processingBarcode = useRef<string | null>(null);
+  const scannedBarcodesRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     loadInitialData();
   }, []);
@@ -93,8 +96,20 @@ export default function BulkScanScreen() {
   };
 
   const handleBarcodeScan = async (barcode: string) => {
+    const normalizedBarcode = barcode.trim().toUpperCase();
+
+    if (processingBarcode.current === normalizedBarcode) {
+      return;
+    }
+
+    if (scannedBarcodesRef.current.has(normalizedBarcode)) {
+      Alert.alert('Already Scanned', `${barcode} is already in the list`);
+      return;
+    }
+
     const alreadyScanned = scannedBookings.find(
-      b => b.miles_ref === barcode || b.hawb === barcode
+      b => b.miles_ref.toUpperCase() === normalizedBarcode ||
+        b.hawb.toUpperCase() === normalizedBarcode
     );
 
     if (alreadyScanned) {
@@ -102,9 +117,13 @@ export default function BulkScanScreen() {
       return;
     }
 
+    processingBarcode.current = normalizedBarcode;
     setLoading(true);
+
     const result = await findBooking(barcode);
+
     setLoading(false);
+    processingBarcode.current = null;
 
     if (!result.success) {
       Alert.alert('Error', result.error || 'Booking not found');
@@ -112,6 +131,15 @@ export default function BulkScanScreen() {
     }
 
     const booking = result.booking!;
+
+    const alreadyInList = scannedBookings.find(
+      b => b.booking_id === booking.booking_id
+    );
+
+    if (alreadyInList) {
+      Alert.alert('Already Scanned', `${booking.miles_ref} is already in the list`);
+      return;
+    }
 
     if (booking.status.status_id === DELIVERED_STATUS_ID) {
       Alert.alert(
@@ -131,10 +159,19 @@ export default function BulkScanScreen() {
       codInfo,
     };
 
+    scannedBarcodesRef.current.add(normalizedBarcode);
+    scannedBarcodesRef.current.add(booking.miles_ref.toUpperCase());
+    scannedBarcodesRef.current.add(booking.hawb.toUpperCase());
+
     setScannedBookings(prev => [...prev, scannedBooking]);
   };
 
   const handleRemoveBooking = (index: number) => {
+    const bookingToRemove = scannedBookings[index];
+
+    scannedBarcodesRef.current.delete(bookingToRemove.miles_ref.toUpperCase());
+    scannedBarcodesRef.current.delete(bookingToRemove.hawb.toUpperCase());
+
     setScannedBookings(prev => prev.filter((_, i) => i !== index));
   };
 
@@ -147,7 +184,10 @@ export default function BulkScanScreen() {
         {
           text: 'Clear All',
           style: 'destructive',
-          onPress: () => setScannedBookings([])
+          onPress: () => {
+            scannedBarcodesRef.current.clear();
+            setScannedBookings([]);
+          }
         }
       ]
     );
@@ -208,8 +248,8 @@ export default function BulkScanScreen() {
       setShowReasonInput(true);
     } else if (requirements.photoRequired) {
       Alert.alert(
-        'Photos Required',
-        `This status requires photos for each booking. You will need to take ${scannedBookings.length} photo(s).`,
+        'Photo Required',
+        `Take 1 photo that will be applied to all ${scannedBookings.length} bookings.`,
         [
           { text: 'Cancel', style: 'cancel', onPress: () => { setPendingStatus(null); setPendingRequirements(null); } },
           { text: 'Continue', onPress: () => setShowPhotoCapture(true) }
@@ -268,8 +308,7 @@ export default function BulkScanScreen() {
 
     if (!pendingStatus) return;
 
-    const currentBooking = scannedBookings[currentBookingIndex];
-
+    setBulkPhotos(photos);
     setLoading(true);
 
     try {
@@ -280,25 +319,21 @@ export default function BulkScanScreen() {
         return;
       }
 
-      await saveStatusPOD({
-        booking_id: currentBooking.booking_id,
-        miles_ref: currentBooking.miles_ref,
-        status_id: pendingStatus.status_id,
-        photos,
-        captured_by: user.id,
-      });
+      for (const booking of scannedBookings) {
+        await saveStatusPOD({
+          booking_id: booking.booking_id,
+          miles_ref: booking.miles_ref,
+          status_id: pendingStatus.status_id,
+          photos,
+          captured_by: user.id,
+        });
+      }
 
-      if (currentBookingIndex < scannedBookings.length - 1) {
-        setCurrentBookingIndex(prev => prev + 1);
+      if (pendingRequirements?.reasonRequired && !bulkReason) {
         setLoading(false);
-        setShowPhotoCapture(true);
+        setShowReasonInput(true);
       } else {
-        if (pendingRequirements?.reasonRequired && !bulkReason) {
-          setLoading(false);
-          setShowReasonInput(true);
-        } else {
-          await processBulkUpdate(pendingStatus, bulkReason);
-        }
+        await processBulkUpdate(pendingStatus, bulkReason);
       }
     } catch (error) {
       console.error('Error saving photo:', error);
@@ -463,7 +498,7 @@ export default function BulkScanScreen() {
         <Ionicons name="close-circle" size={24} color={colors.error} />
       </TouchableOpacity>
     </View>
-  ), []);
+  ), [scannedBookings]);
 
   if (loading) {
     return <LoadingIndicator fullScreen message="Processing..." />;
@@ -599,7 +634,7 @@ export default function BulkScanScreen() {
       <StatusPhotoCapture
         visible={showPhotoCapture}
         statusId={pendingStatus?.status_id || 0}
-        statusName={`${pendingStatus?.name || ''} - ${scannedBookings[currentBookingIndex]?.miles_ref || ''} (${currentBookingIndex + 1}/${scannedBookings.length})`}
+        statusName={`${pendingStatus?.name || ''} - All ${scannedBookings.length} bookings`}
         onComplete={handlePhotosCaptured}
         onCancel={() => {
           setShowPhotoCapture(false);
