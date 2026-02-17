@@ -1,88 +1,77 @@
-import { StatusPermissions } from './types';
-import { saveStatusPermissions, loadStatusPermissions } from './storage';
+import { GeofenceConfig, GeofenceLocation } from './types';
+import { saveGeofence, loadGeofence } from './storage';
 import { DEFAULT_CONFIG } from '../../constants/defaultConfig';
 
 const API_BASE_URL = 'https://fleet.milesxp.com/api/driver-config';
 
-let cachedPermissions: StatusPermissions | null = null;
+let cachedGeofence: GeofenceConfig | null = null;
 
-export const fetchStatusPermissions = async (): Promise<StatusPermissions> => {
+export const fetchGeofenceConfig = async (): Promise<GeofenceConfig> => {
     try {
-        const response = await fetch(`${API_BASE_URL}/status-permissions`, {
+        const response = await fetch(`${API_BASE_URL}/geofence`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
             },
         });
-
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-
-        const data: StatusPermissions = await response.json();
-
-        await saveStatusPermissions(data);
-        cachedPermissions = data;
-
+        const data: GeofenceConfig = await response.json();
+        await saveGeofence(data);
+        cachedGeofence = data;
         return data;
     } catch (error) {
-        console.error('Error fetching status permissions:', error);
+        console.error('Error fetching geofence config:', error);
         throw error;
     }
 };
 
-export const getStatusPermissions = async (): Promise<StatusPermissions> => {
-    if (cachedPermissions) {
-        return cachedPermissions;
+export const getGeofenceConfig = async (): Promise<GeofenceConfig> => {
+    if (cachedGeofence) {
+        return cachedGeofence;
     }
-
-    const stored = await loadStatusPermissions();
+    const stored = await loadGeofence();
     if (stored) {
-        cachedPermissions = stored;
+        cachedGeofence = stored;
         return stored;
     }
-
-    return DEFAULT_CONFIG.statusPermissions;
+    return DEFAULT_CONFIG.geofence;
 };
 
-export const getStatusesForDriverType = async (driverType: string): Promise<number[]> => {
-    const permissions = await getStatusPermissions();
-    const type = driverType.toLowerCase();
-    return permissions.permissions[type] || [];
+export const getGeofenceLocations = async (): Promise<GeofenceLocation[]> => {
+    const config = await getGeofenceConfig();
+    return config.locations;
 };
 
-export const getStatusesForDriverTypes = async (driverTypes: string[]): Promise<number[]> => {
-    const permissions = await getStatusPermissions();
-    const allowedStatuses = new Set<number>();
+export const getGeofenceForStatus = async (statusId: number): Promise<GeofenceLocation | null> => {
+    const locations = await getGeofenceLocations();
+    return locations.find((loc) => loc.applies_to_statuses.includes(statusId)) || null;
+};
 
-    for (const type of driverTypes) {
-        const typePermissions = permissions.permissions[type.toLowerCase()];
-        if (typePermissions) {
-            typePermissions.forEach((id) => allowedStatuses.add(id));
-        }
+export const getWarehouseLocation = async (): Promise<GeofenceLocation | null> => {
+    const locations = await getGeofenceLocations();
+    return locations.find((loc) => loc.type === 'warehouse') || null;
+};
+
+export const getWarehouseCoordinates = async (): Promise<{
+    latitude: number;
+    longitude: number;
+    radiusMeters: number;
+    name: string;
+} | null> => {
+    const warehouse = await getWarehouseLocation();
+    if (!warehouse) {
+        return null;
     }
-
-    return Array.from(allowedStatuses).sort((a, b) => a - b);
+    return {
+        latitude: warehouse.latitude,
+        longitude: warehouse.longitude,
+        radiusMeters: warehouse.radius_meters,
+        name: warehouse.name,
+    };
 };
 
-export const isStatusAllowedForDriver = async (
-    statusId: number,
-    driverTypes: string[]
-): Promise<boolean> => {
-    const allowedStatuses = await getStatusesForDriverTypes(driverTypes);
-    return allowedStatuses.includes(statusId);
-};
-
-export const isWarehouseScanStatus = async (statusId: number): Promise<boolean> => {
-    const permissions = await getStatusPermissions();
-    return permissions.warehouse_scan_statuses.includes(statusId);
-};
-
-export const getDeliveredStatusId = async (): Promise<number> => {
-    const permissions = await getStatusPermissions();
-    return permissions.delivered_status_id;
-};
-
-export const clearPermissionsCache = (): void => {
-    cachedPermissions = null;
+export const clearGeofenceCache = (): void => {
+    cachedGeofence = null;
 };

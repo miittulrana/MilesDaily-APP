@@ -8,6 +8,7 @@ import LoadingIndicator from '../../components/LoadingIndicator';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
 import { signIn } from '../../lib/auth';
+import { loginToBizhandle } from '../../lib/bizhandleAuth';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -34,6 +35,12 @@ export default function LoginScreen() {
         return;
       }
 
+      // Silently authenticate to Bizhandle in the background
+      // Don't block navigation - if it fails, the bookings module has fallback
+      loginToBizhandle(email, password).catch((err) => {
+        console.log('Bizhandle silent auth failed (will prompt later if needed):', err);
+      });
+
       router.replace('/(dashboard)');
       setLoading(false);
     } catch (err) {
@@ -49,7 +56,7 @@ export default function LoginScreen() {
         colors={[colors.background, colors.gradientLight]}
         style={styles.backgroundGradient}
       />
-      
+
       <View style={[styles.decorativeCircle, styles.circle1]} />
       <View style={[styles.decorativeCircle, styles.circle2]} />
       <View style={[styles.decorativeCircle, styles.circle3]} />
@@ -62,8 +69,8 @@ export default function LoginScreen() {
         <View style={styles.content}>
           <View style={styles.logoContainer}>
             <View style={styles.logoWrapper}>
-              <Image 
-                source={require('../../assets/logo.png')} 
+              <Image
+                source={require('../../assets/logo.png')}
                 style={styles.logo}
                 resizeMode="contain"
               />
@@ -100,7 +107,7 @@ export default function LoginScreen() {
                 />
               </View>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.loginButton, loading && styles.loginButtonDisabled]}
                 onPress={handleLogin}
                 disabled={loading}

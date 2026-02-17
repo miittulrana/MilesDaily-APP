@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Alert, TextInput } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,14 +9,38 @@ import { layouts } from '../constants/layouts';
 interface BarcodeScannerProps {
   onScan: (barcode: string) => void;
   onManualSearch?: (barcode: string) => void;
+  cooldownMode?: boolean;
+  cooldownDuration?: number;
 }
 
-export default function BarcodeScanner({ onScan, onManualSearch }: BarcodeScannerProps) {
+export default function BarcodeScanner({
+  onScan,
+  onManualSearch,
+  cooldownMode = false,
+  cooldownDuration = 2000,
+}: BarcodeScannerProps) {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [manualInput, setManualInput] = useState('');
+  const [cooldownActive, setCooldownActive] = useState(false);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
+
+  const isProcessingRef = useRef(false);
+  const cooldownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (cooldownTimerRef.current) {
+        clearTimeout(cooldownTimerRef.current);
+      }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    };
+  }, []);
 
   if (!permission) {
     return <View style={styles.container} />;
@@ -34,21 +58,65 @@ export default function BarcodeScanner({ onScan, onManualSearch }: BarcodeScanne
     );
   }
 
-  const handleBarCodeScanned = ({ data }: { data: string }) => {
-    if (scanned) return;
-    
-    setScanned(true);
-    onScan(data);
-    
-    setTimeout(() => {
+  const startCooldown = () => {
+    if (!cooldownMode) return;
+
+    setCooldownActive(true);
+    setCooldownRemaining(Math.ceil(cooldownDuration / 1000));
+
+    countdownIntervalRef.current = setInterval(() => {
+      setCooldownRemaining((prev) => {
+        if (prev <= 1) {
+          if (countdownIntervalRef.current) {
+            clearInterval(countdownIntervalRef.current);
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    cooldownTimerRef.current = setTimeout(() => {
+      setCooldownActive(false);
       setScanned(false);
-    }, 2000);
+      isProcessingRef.current = false;
+      setCooldownRemaining(0);
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    }, cooldownDuration);
+  };
+
+  const handleBarCodeScanned = ({ data }: { data: string }) => {
+    if (scanned || isProcessingRef.current || cooldownActive) return;
+
+    isProcessingRef.current = true;
+    setScanned(true);
+
+    onScan(data);
+
+    if (cooldownMode) {
+      startCooldown();
+    } else {
+      setTimeout(() => {
+        setScanned(false);
+        isProcessingRef.current = false;
+      }, 2000);
+    }
   };
 
   const handleManualSubmit = () => {
     if (manualInput.trim() && onManualSearch) {
+      if (cooldownMode && cooldownActive) {
+        return;
+      }
       onManualSearch(manualInput.trim());
       setManualInput('');
+      if (cooldownMode) {
+        setScanned(true);
+        isProcessingRef.current = true;
+        startCooldown();
+      }
     }
   };
 
@@ -63,17 +131,14 @@ export default function BarcodeScanner({ onScan, onManualSearch }: BarcodeScanne
         }}
       >
         <View style={styles.overlay}>
-          {/* Top overlay with back button and manual search */}
           <View style={styles.topOverlay}>
-            {/* Back button */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.backButton}
               onPress={() => router.back()}
             >
               <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
             </TouchableOpacity>
 
-            {/* Manual search */}
             <View style={styles.manualSearchContainer}>
               <View style={styles.searchInputWrapper}>
                 <Ionicons name="barcode-outline" size={18} color="#FFFFFF" />
@@ -87,6 +152,7 @@ export default function BarcodeScanner({ onScan, onManualSearch }: BarcodeScanne
                   autoCorrect={false}
                   returnKeyType="search"
                   onSubmitEditing={handleManualSubmit}
+                  editable={!cooldownActive}
                 />
                 {manualInput.length > 0 && (
                   <TouchableOpacity onPress={() => setManualInput('')}>
@@ -95,9 +161,12 @@ export default function BarcodeScanner({ onScan, onManualSearch }: BarcodeScanne
                 )}
               </View>
               <TouchableOpacity
-                style={[styles.searchButton, !manualInput.trim() && styles.searchButtonDisabled]}
+                style={[
+                  styles.searchButton,
+                  (!manualInput.trim() || cooldownActive) && styles.searchButtonDisabled
+                ]}
                 onPress={handleManualSubmit}
-                disabled={!manualInput.trim()}
+                disabled={!manualInput.trim() || cooldownActive}
               >
                 <Ionicons name="search" size={20} color="#FFFFFF" />
               </TouchableOpacity>
@@ -111,11 +180,36 @@ export default function BarcodeScanner({ onScan, onManualSearch }: BarcodeScanne
               <View style={[styles.corner, styles.topRight]} />
               <View style={[styles.corner, styles.bottomLeft]} />
               <View style={[styles.corner, styles.bottomRight]} />
+
+              {cooldownMode && cooldownActive && (
+                <View style={styles.cooldownOverlay}>
+                  <View style={styles.cooldownBadge}>
+                    <Ionicons name="time-outline" size={24} color="#FFFFFF" />
+                    <Text style={styles.cooldownText}>Wait {cooldownRemaining}s</Text>
+                  </View>
+                </View>
+              )}
             </View>
             <View style={styles.sideOverlay} />
           </View>
 
           <View style={styles.bottomOverlay}>
+            {cooldownMode && (
+              <View style={[
+                styles.statusIndicator,
+                cooldownActive ? styles.statusIndicatorBusy : styles.statusIndicatorReady
+              ]}>
+                <Ionicons
+                  name={cooldownActive ? "hourglass-outline" : "checkmark-circle"}
+                  size={16}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.statusIndicatorText}>
+                  {cooldownActive ? 'Processing...' : 'Ready to scan'}
+                </Text>
+              </View>
+            )}
+
             <TouchableOpacity
               style={styles.torchButton}
               onPress={() => setTorchOn(!torchOn)}
@@ -127,7 +221,12 @@ export default function BarcodeScanner({ onScan, onManualSearch }: BarcodeScanne
               />
             </TouchableOpacity>
             <Text style={styles.instructionText}>
-              Position barcode within frame to scan
+              {cooldownMode
+                ? (cooldownActive
+                  ? 'Move to next parcel...'
+                  : 'Position barcode within frame to scan')
+                : 'Position barcode within frame to scan'
+              }
             </Text>
           </View>
         </View>
@@ -149,7 +248,7 @@ const styles = StyleSheet.create({
   topOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingTop: 60, // Account for notch
+    paddingTop: 60,
     paddingHorizontal: 16,
   },
   backButton: {
@@ -239,12 +338,56 @@ const styles = StyleSheet.create({
     borderBottomWidth: 4,
     borderRightWidth: 4,
   },
+  cooldownOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cooldownBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 8,
+  },
+  cooldownText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
   bottomOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingBottom: layouts.spacing.xl,
+  },
+  statusIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginBottom: layouts.spacing.md,
+    gap: 6,
+  },
+  statusIndicatorReady: {
+    backgroundColor: colors.success,
+  },
+  statusIndicatorBusy: {
+    backgroundColor: colors.warning,
+  },
+  statusIndicatorText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   torchButton: {
     marginBottom: layouts.spacing.lg,

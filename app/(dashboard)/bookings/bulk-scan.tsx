@@ -512,6 +512,8 @@ export default function BulkScanScreen() {
             <BarcodeScanner
               onScan={handleBarcodeScan}
               onManualSearch={handleBarcodeScan}
+              cooldownMode={true}
+              cooldownDuration={2000}
             />
           </View>
 
