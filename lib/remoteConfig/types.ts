@@ -80,6 +80,17 @@ export interface UIContentConfig {
     updated_at: string;
 }
 
+// ── Module Access ──────────────────────────────────────────────
+
+export interface ModuleAccessConfig {
+    // e.g. { subcontractor: ['bookings','runsheets'], freight: [...all...] }
+    access: Record<string, string[]>;
+    version: string;
+    updated_at: string;
+}
+
+// ── Version ────────────────────────────────────────────────────
+
 export interface ConfigVersion {
     global_version: string;
     versions: {
@@ -88,6 +99,7 @@ export interface ConfigVersion {
         geofence: string;
         status_validations: string;
         ui_content: string;
+        module_access: string;
     };
     last_updated: string;
     needs_update: boolean;
@@ -100,6 +112,7 @@ export interface RemoteConfigState {
     geofence: GeofenceConfig;
     validations: StatusValidations;
     uiContent: UIContentConfig;
+    moduleAccess: ModuleAccessConfig;
     version: string;
     lastFetched: string | null;
     isLoaded: boolean;

@@ -8,7 +8,24 @@ import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
 import { getAssignedVehicle, getDriverInfo } from '../../lib/auth';
 import { useTempAssignments } from '../../lib/hooks/useTempAssignments';
+import { getAllowedModulesForDriver, shouldShowVehicleSection } from '../../lib/remoteConfig/moduleAccess';
 import { DriverInfo } from '../../utils/types';
+
+// All possible modules in display order — add new ones here freely
+const ALL_MODULE_DEFINITIONS = [
+  { key: 'bookings', title: 'Bookings', iconName: 'cube-outline' },
+  { key: 'runsheets', title: 'Run-Sheets', iconName: 'list-outline' },
+  { key: 'documents', title: 'Documents', iconName: 'document-text-outline' },
+  { key: 'fuel', title: 'Fuel', iconName: 'water' },
+  { key: 'truck-log', title: 'Truck Log', iconName: 'time-outline' },
+  { key: 'wash', title: 'Wash', iconName: 'car-outline' },
+  { key: 'minor-repairs', title: 'Minor Repairs', iconName: 'construct-outline' },
+  { key: 'accident', title: 'Accident', iconName: 'warning-outline' },
+  { key: 'damage-log', title: 'Damage Log', iconName: 'alert-circle-outline' },
+  { key: 'breakdown', title: 'Breakdown', iconName: 'construct-outline' },
+  { key: 'uniforms', title: 'Uniforms', iconName: 'shirt-outline' },
+  { key: 'important-numbers', title: 'Important Numbers', iconName: 'call-outline' },
+];
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -16,6 +33,8 @@ export default function DashboardScreen() {
   const [vehicle, setVehicle] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [allowedModules, setAllowedModules] = useState<string[]>(['__ALL__']);
+  const [showVehicle, setShowVehicle] = useState(true);
 
   const {
     assignments,
@@ -27,12 +46,25 @@ export default function DashboardScreen() {
   const loadData = async (showLoading = true) => {
     try {
       if (showLoading) setLoading(true);
+
       const driverData = await getDriverInfo();
       setDriver(driverData);
 
-      if (driverData?.id) {
+      // Resolve module access and vehicle visibility from remote config
+      const driverTypes = driverData?.driver_types || [];
+      const [modules, vehicleVisible] = await Promise.all([
+        getAllowedModulesForDriver(driverTypes),
+        shouldShowVehicleSection(driverTypes),
+      ]);
+      setAllowedModules(modules);
+      setShowVehicle(vehicleVisible);
+
+      // Only fetch vehicle if this driver type needs it
+      if (driverData?.id && vehicleVisible) {
         const vehicleData = await getAssignedVehicle(driverData.id);
         setVehicle(vehicleData);
+      } else {
+        setVehicle(null);
       }
     } catch (error) {
       console.error('Error loading dashboard data:', error);
@@ -103,6 +135,19 @@ export default function DashboardScreen() {
     }
   };
 
+  // Filter modules based on allowed list
+  // '__ALL__' sentinel means no restriction — show everything
+  const isAllAccess = allowedModules.includes('__ALL__');
+  const visibleModules = ALL_MODULE_DEFINITIONS.filter(
+    (m) => isAllAccess || allowedModules.includes(m.key)
+  );
+
+  // Pair into rows of 2 (same layout as original)
+  const moduleRows: (typeof ALL_MODULE_DEFINITIONS)[] = [];
+  for (let i = 0; i < visibleModules.length; i += 2) {
+    moduleRows.push(visibleModules.slice(i, i + 2));
+  }
+
   if (loading) {
     return <LoadingIndicator fullScreen message="Loading your dashboard..." />;
   }
@@ -131,15 +176,18 @@ export default function DashboardScreen() {
           )}
         </View>
 
-        {vehicle ? (
-          <View style={styles.vehicleInfoCard}>
-            <Text style={styles.vehicleNumber}>{vehicle.license_plate}</Text>
-            <Text style={styles.fuelType}>{vehicle.fuel_type || 'N/A'}</Text>
-          </View>
-        ) : (
-          <View style={styles.noVehicleCard}>
-            <Text style={styles.noVehicleText}>No Vehicle</Text>
-          </View>
+        {/* Only show vehicle section if config says this driver type needs it */}
+        {showVehicle && (
+          vehicle ? (
+            <View style={styles.vehicleInfoCard}>
+              <Text style={styles.vehicleNumber}>{vehicle.license_plate}</Text>
+              <Text style={styles.fuelType}>{vehicle.fuel_type || 'N/A'}</Text>
+            </View>
+          ) : (
+            <View style={styles.noVehicleCard}>
+              <Text style={styles.noVehicleText}>No Vehicle</Text>
+            </View>
+          )
         )}
       </View>
 
@@ -151,83 +199,20 @@ export default function DashboardScreen() {
       )}
 
       <View style={styles.modulesGrid}>
-        <View style={styles.moduleRow}>
-          <ModuleCard
-            title="Bookings"
-            iconName="cube-outline"
-            onPress={() => navigateToModule('bookings')}
-          />
-          <ModuleCard
-            title="Run-Sheets"
-            iconName="list-outline"
-            onPress={() => navigateToModule('runsheets')}
-          />
-        </View>
-
-        <View style={styles.moduleRow}>
-          <ModuleCard
-            title="Documents"
-            iconName="document-text-outline"
-            onPress={() => navigateToModule('documents')}
-          />
-          <ModuleCard
-            title="Fuel"
-            iconName="water"
-            onPress={() => navigateToModule('fuel')}
-          />
-        </View>
-
-        <View style={styles.moduleRow}>
-          <ModuleCard
-            title="Truck Log"
-            iconName="time-outline"
-            onPress={() => navigateToModule('truck-log')}
-          />
-          <ModuleCard
-            title="Wash"
-            iconName="car-outline"
-            onPress={() => navigateToModule('wash')}
-          />
-        </View>
-
-        <View style={styles.moduleRow}>
-          <ModuleCard
-            title="Minor Repairs"
-            iconName="construct-outline"
-            onPress={() => navigateToModule('minor-repairs')}
-          />
-          <ModuleCard
-            title="Accident"
-            iconName="warning-outline"
-            onPress={() => navigateToModule('accident')}
-          />
-        </View>
-
-        <View style={styles.moduleRow}>
-          <ModuleCard
-            title="Damage Log"
-            iconName="alert-circle-outline"
-            onPress={() => navigateToModule('damage-log')}
-          />
-          <ModuleCard
-            title="Breakdown"
-            iconName="construct-outline"
-            onPress={() => navigateToModule('breakdown')}
-          />
-        </View>
-
-        <View style={styles.moduleRow}>
-          <ModuleCard
-            title="Uniforms"
-            iconName="shirt-outline"
-            onPress={() => navigateToModule('uniforms')}
-          />
-          <ModuleCard
-            title="Important Numbers"
-            iconName="call-outline"
-            onPress={() => navigateToModule('important-numbers')}
-          />
-        </View>
+        {moduleRows.map((row, rowIndex) => (
+          <View key={rowIndex} style={styles.moduleRow}>
+            {row.map((mod) => (
+              <ModuleCard
+                key={mod.key}
+                title={mod.title}
+                iconName={mod.iconName}
+                onPress={() => navigateToModule(mod.key)}
+              />
+            ))}
+            {/* Odd module — placeholder to keep 2-col grid alignment */}
+            {row.length === 1 && <View style={styles.moduleCardPlaceholder} />}
+          </View>
+        ))}
       </View>
     </ScrollView>
   );

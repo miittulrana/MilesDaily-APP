@@ -6,6 +6,7 @@ const STORAGE_KEYS = {
     GEOFENCE: 'remote_config_geofence',
     VALIDATIONS: 'remote_config_validations',
     UI_CONTENT: 'remote_config_ui_content',
+    MODULE_ACCESS: 'remote_config_module_access',
     VERSION: 'remote_config_version',
     LAST_FETCHED: 'remote_config_last_fetched',
 };
@@ -22,9 +23,7 @@ export const saveToStorage = async <T>(key: string, data: T): Promise<void> => {
 export const loadFromStorage = async <T>(key: string): Promise<T | null> => {
     try {
         const jsonData = await AsyncStorage.getItem(key);
-        if (jsonData) {
-            return JSON.parse(jsonData) as T;
-        }
+        if (jsonData) return JSON.parse(jsonData) as T;
         return null;
     } catch (error) {
         console.error(`Error loading ${key} from storage:`, error);
@@ -41,60 +40,28 @@ export const clearStorage = async (): Promise<void> => {
     }
 };
 
-export const saveStatusRules = async (data: any): Promise<void> => {
-    await saveToStorage(STORAGE_KEYS.STATUS_RULES, data);
-};
+export const saveStatusRules = async (data: any): Promise<void> => saveToStorage(STORAGE_KEYS.STATUS_RULES, data);
+export const loadStatusRules = async (): Promise<any | null> => loadFromStorage(STORAGE_KEYS.STATUS_RULES);
 
-export const loadStatusRules = async (): Promise<any | null> => {
-    return loadFromStorage(STORAGE_KEYS.STATUS_RULES);
-};
+export const saveStatusPermissions = async (data: any): Promise<void> => saveToStorage(STORAGE_KEYS.STATUS_PERMISSIONS, data);
+export const loadStatusPermissions = async (): Promise<any | null> => loadFromStorage(STORAGE_KEYS.STATUS_PERMISSIONS);
 
-export const saveStatusPermissions = async (data: any): Promise<void> => {
-    await saveToStorage(STORAGE_KEYS.STATUS_PERMISSIONS, data);
-};
+export const saveGeofence = async (data: any): Promise<void> => saveToStorage(STORAGE_KEYS.GEOFENCE, data);
+export const loadGeofence = async (): Promise<any | null> => loadFromStorage(STORAGE_KEYS.GEOFENCE);
 
-export const loadStatusPermissions = async (): Promise<any | null> => {
-    return loadFromStorage(STORAGE_KEYS.STATUS_PERMISSIONS);
-};
+export const saveValidations = async (data: any): Promise<void> => saveToStorage(STORAGE_KEYS.VALIDATIONS, data);
+export const loadValidations = async (): Promise<any | null> => loadFromStorage(STORAGE_KEYS.VALIDATIONS);
 
-export const saveGeofence = async (data: any): Promise<void> => {
-    await saveToStorage(STORAGE_KEYS.GEOFENCE, data);
-};
+export const saveUIContent = async (data: any): Promise<void> => saveToStorage(STORAGE_KEYS.UI_CONTENT, data);
+export const loadUIContent = async (): Promise<any | null> => loadFromStorage(STORAGE_KEYS.UI_CONTENT);
 
-export const loadGeofence = async (): Promise<any | null> => {
-    return loadFromStorage(STORAGE_KEYS.GEOFENCE);
-};
+export const saveModuleAccess = async (data: any): Promise<void> => saveToStorage(STORAGE_KEYS.MODULE_ACCESS, data);
+export const loadModuleAccess = async (): Promise<any | null> => loadFromStorage(STORAGE_KEYS.MODULE_ACCESS);
 
-export const saveValidations = async (data: any): Promise<void> => {
-    await saveToStorage(STORAGE_KEYS.VALIDATIONS, data);
-};
+export const saveVersion = async (version: string): Promise<void> => saveToStorage(STORAGE_KEYS.VERSION, version);
+export const loadVersion = async (): Promise<string | null> => loadFromStorage(STORAGE_KEYS.VERSION);
 
-export const loadValidations = async (): Promise<any | null> => {
-    return loadFromStorage(STORAGE_KEYS.VALIDATIONS);
-};
-
-export const saveUIContent = async (data: any): Promise<void> => {
-    await saveToStorage(STORAGE_KEYS.UI_CONTENT, data);
-};
-
-export const loadUIContent = async (): Promise<any | null> => {
-    return loadFromStorage(STORAGE_KEYS.UI_CONTENT);
-};
-
-export const saveVersion = async (version: string): Promise<void> => {
-    await saveToStorage(STORAGE_KEYS.VERSION, version);
-};
-
-export const loadVersion = async (): Promise<string | null> => {
-    return loadFromStorage(STORAGE_KEYS.VERSION);
-};
-
-export const saveLastFetched = async (): Promise<void> => {
-    await saveToStorage(STORAGE_KEYS.LAST_FETCHED, new Date().toISOString());
-};
-
-export const loadLastFetched = async (): Promise<string | null> => {
-    return loadFromStorage(STORAGE_KEYS.LAST_FETCHED);
-};
+export const saveLastFetched = async (): Promise<void> => saveToStorage(STORAGE_KEYS.LAST_FETCHED, new Date().toISOString());
+export const loadLastFetched = async (): Promise<string | null> => loadFromStorage(STORAGE_KEYS.LAST_FETCHED);
 
 export { STORAGE_KEYS };

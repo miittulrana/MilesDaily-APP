@@ -6,6 +6,7 @@ import { fetchStatusPermissions, clearPermissionsCache } from './statusPermissio
 import { fetchGeofenceConfig, clearGeofenceCache } from './geofence';
 import { fetchStatusValidations, clearValidationsCache } from './validations';
 import { fetchUIContent, clearUIContentCache } from './uiContent';
+import { fetchModuleAccess, clearModuleAccessCache } from './moduleAccess';
 
 const API_BASE_URL = 'https://fleet.milesxp.com/api/driver-config';
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
@@ -22,14 +23,10 @@ export const checkVersion = async (): Promise<ConfigVersion | null> => {
 
         const response = await fetch(url, {
             method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
         });
 
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
         const data: ConfigVersion = await response.json();
         return data;
@@ -49,6 +46,7 @@ export const fetchAllConfigs = async (): Promise<boolean> => {
             fetchGeofenceConfig(),
             fetchStatusValidations(),
             fetchUIContent(),
+            fetchModuleAccess(),
         ]);
 
         const allSucceeded = results.every((result) => result.status === 'fulfilled');
@@ -62,11 +60,9 @@ export const fetchAllConfigs = async (): Promise<boolean> => {
             await saveLastFetched();
             console.log('[RemoteConfig] All configs fetched successfully');
         } else {
+            const names = ['statusRules', 'statusPermissions', 'geofence', 'validations', 'uiContent', 'moduleAccess'];
             const failed = results
-                .map((result, index) => {
-                    const names = ['statusRules', 'statusPermissions', 'geofence', 'validations', 'uiContent'];
-                    return result.status === 'rejected' ? names[index] : null;
-                })
+                .map((result, index) => (result.status === 'rejected' ? names[index] : null))
                 .filter(Boolean);
             console.warn('[RemoteConfig] Some configs failed to fetch:', failed);
         }
@@ -136,6 +132,7 @@ export const clearAllCaches = (): void => {
     clearGeofenceCache();
     clearValidationsCache();
     clearUIContentCache();
+    clearModuleAccessCache();
     currentVersion = null;
 };
 
@@ -145,17 +142,13 @@ export const clearAllStorageAndCaches = async (): Promise<void> => {
     isInitialized = false;
 };
 
-export const isConfigInitialized = (): boolean => {
-    return isInitialized;
-};
-
-export const getCurrentVersion = (): string | null => {
-    return currentVersion;
-};
+export const isConfigInitialized = (): boolean => isInitialized;
+export const getCurrentVersion = (): string | null => currentVersion;
 
 export * from './statusRules';
 export * from './statusPermissions';
 export * from './geofence';
 export * from './validations';
 export * from './uiContent';
+export * from './moduleAccess';
 export * from './types';
