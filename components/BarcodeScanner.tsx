@@ -8,11 +8,12 @@ import { colors } from '../constants/Colors';
 import { layouts } from '../constants/layouts';
 
 interface BarcodeScannerProps {
-  onScan: (barcode: string) => void;
-  onManualSearch?: (barcode: string) => void;
+  onScan: (barcode: string) => void | Promise<void>;
+  onManualSearch?: (barcode: string) => void | Promise<void>;
   cooldownMode?: boolean;
   cooldownDuration?: number;
-  compact?: boolean; // When true, hides back button and search input (for bulk scan)
+  compact?: boolean;
+  locked?: boolean; // External lock to prevent scanning while parent is processing
 }
 
 interface ScanBuffer {
@@ -27,13 +28,16 @@ const CONFIG = {
   // Minimum reads of same barcode to confirm
   MIN_CONSISTENT_READS: 3,
   // Time window to collect reads (ms)
-  BUFFER_WINDOW: 600,
+  BUFFER_WINDOW: 800,
+  // Minimum time spread required - barcode must be read over at least this duration (ms)
+  // This prevents instant confirmation when camera reads 3 times in 50ms
+  MIN_TIME_SPREAD: 400,
   // Minimum barcode length
   MIN_LENGTH: 6,
   // Maximum barcode length
   MAX_LENGTH: 20,
   // Time to show confirmation before processing (ms)
-  CONFIRMATION_DISPLAY_TIME: 800,
+  CONFIRMATION_DISPLAY_TIME: 600,
   // Buffer cleanup interval (ms)
   BUFFER_CLEANUP_INTERVAL: 1000,
   // Stale buffer entry threshold (ms)
@@ -77,6 +81,7 @@ export default function BarcodeScanner({
   cooldownMode = false,
   cooldownDuration = 2000,
   compact = false,
+  locked = false,
 }: BarcodeScannerProps) {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
@@ -96,6 +101,25 @@ export default function BarcodeScanner({
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const bufferCleanupRef = useRef<NodeJS.Timeout | null>(null);
   const confirmationTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Effect to handle external lock state
+  useEffect(() => {
+    if (locked) {
+      // When locked externally, set to processing state
+      if (scannerState === 'ready' || scannerState === 'scanning') {
+        setScannerState('processing');
+      }
+    } else {
+      // When unlocked, if we were in processing due to lock, go to cooldown or ready
+      if (scannerState === 'processing' && !isProcessingRef.current) {
+        if (cooldownMode) {
+          startCooldown();
+        } else {
+          resetScanner();
+        }
+      }
+    }
+  }, [locked]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -164,7 +188,7 @@ export default function BarcodeScanner({
   }, [cooldownMode, cooldownDuration, resetScanner]);
 
   // Process confirmed barcode
-  const processConfirmedBarcode = useCallback((code: string) => {
+  const processConfirmedBarcode = useCallback(async (code: string) => {
     setConfirmedCode(code);
     setScannerState('confirming');
 
@@ -172,15 +196,31 @@ export default function BarcodeScanner({
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     // Brief display of confirmed code, then process
-    confirmationTimerRef.current = setTimeout(() => {
+    confirmationTimerRef.current = setTimeout(async () => {
       setScannerState('processing');
-      onScan(code);
-      startCooldown();
+
+      // Await the onScan callback if it returns a promise
+      try {
+        await onScan(code);
+      } catch (error) {
+        console.error('Error in onScan callback:', error);
+      }
+
+      // Only start cooldown if not externally locked
+      // If locked, the parent will unlock when ready
+      if (!locked) {
+        startCooldown();
+      }
     }, CONFIG.CONFIRMATION_DISPLAY_TIME);
-  }, [onScan, startCooldown]);
+  }, [onScan, startCooldown, locked]);
 
   // Handle raw barcode scan from camera
   const handleBarCodeScanned = useCallback(({ data }: { data: string }) => {
+    // Ignore if externally locked
+    if (locked) {
+      return;
+    }
+
     // Ignore if not ready to scan
     if (scannerState !== 'ready' && scannerState !== 'scanning') {
       return;
@@ -216,12 +256,17 @@ export default function BarcodeScanner({
       const timeElapsed = now - existing.firstSeen;
 
       if (timeElapsed <= CONFIG.BUFFER_WINDOW) {
-        // Update progress indicator
-        const progress = Math.min((existing.count / CONFIG.MIN_CONSISTENT_READS) * 100, 100);
-        setScanProgress(progress);
+        // Calculate progress based on both count and time spread
+        const countProgress = existing.count / CONFIG.MIN_CONSISTENT_READS;
+        const timeProgress = timeElapsed / CONFIG.MIN_TIME_SPREAD;
+        const overallProgress = Math.min(countProgress, timeProgress) * 100;
+        setScanProgress(Math.min(overallProgress, 100));
 
-        // Check if we have enough consistent reads
-        if (existing.count >= CONFIG.MIN_CONSISTENT_READS) {
+        // Check if we have enough consistent reads AND enough time has passed
+        const hasEnoughReads = existing.count >= CONFIG.MIN_CONSISTENT_READS;
+        const hasEnoughTimeSpread = timeElapsed >= CONFIG.MIN_TIME_SPREAD;
+
+        if (hasEnoughReads && hasEnoughTimeSpread) {
           isProcessingRef.current = true;
           processConfirmedBarcode(normalizedCode);
         }
@@ -233,7 +278,7 @@ export default function BarcodeScanner({
           firstSeen: now,
           lastSeen: now,
         });
-        setScanProgress(Math.min((1 / CONFIG.MIN_CONSISTENT_READS) * 100, 100));
+        setScanProgress(0);
       }
     } else {
       // New barcode
@@ -243,15 +288,17 @@ export default function BarcodeScanner({
         firstSeen: now,
         lastSeen: now,
       });
-      setScanProgress(Math.min((1 / CONFIG.MIN_CONSISTENT_READS) * 100, 100));
+      // Initial progress is minimal since we need both count and time
+      setScanProgress(5);
     }
-  }, [scannerState, processConfirmedBarcode]);
+  }, [scannerState, processConfirmedBarcode, locked]);
 
   // Handle manual search
-  const handleManualSubmit = useCallback(() => {
+  const handleManualSubmit = useCallback(async () => {
     const trimmed = manualInput.trim();
 
     if (!trimmed) return;
+    if (locked) return;
     if (scannerState === 'cooldown' || scannerState === 'processing') return;
 
     const normalized = normalizeBarcode(trimmed);
@@ -270,14 +317,21 @@ export default function BarcodeScanner({
     setConfirmedCode(normalized);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    if (onManualSearch) {
-      onManualSearch(normalized);
-    } else {
-      onScan(normalized);
+    try {
+      if (onManualSearch) {
+        await onManualSearch(normalized);
+      } else {
+        await onScan(normalized);
+      }
+    } catch (error) {
+      console.error('Error in manual search callback:', error);
     }
 
-    startCooldown();
-  }, [manualInput, scannerState, onManualSearch, onScan, startCooldown]);
+    // Only start cooldown if not externally locked
+    if (!locked) {
+      startCooldown();
+    }
+  }, [manualInput, scannerState, onManualSearch, onScan, startCooldown, locked]);
 
   // Permission handling
   if (!permission) {
@@ -298,6 +352,16 @@ export default function BarcodeScanner({
 
   // Render scan area overlay based on state
   const renderScanAreaContent = () => {
+    // Show processing if externally locked
+    if (locked) {
+      return (
+        <View style={styles.confirmedOverlay}>
+          <Ionicons name="hourglass-outline" size={48} color={colors.primary} />
+          <Text style={styles.confirmedLabel}>Processing...</Text>
+        </View>
+      );
+    }
+
     switch (scannerState) {
       case 'confirming':
       case 'processing':
@@ -338,11 +402,15 @@ export default function BarcodeScanner({
 
   // Get status indicator config
   const getStatusConfig = () => {
+    if (locked) {
+      return { color: colors.warning, icon: 'hourglass-outline' as const, text: 'Processing...' };
+    }
+
     switch (scannerState) {
       case 'ready':
         return { color: colors.success, icon: 'scan-outline' as const, text: 'Ready to scan' };
       case 'scanning':
-        return { color: colors.warning, icon: 'radio-button-on' as const, text: 'Reading...' };
+        return { color: colors.warning, icon: 'radio-button-on' as const, text: 'Hold steady...' };
       case 'confirming':
         return { color: colors.success, icon: 'checkmark-circle' as const, text: 'Confirmed!' };
       case 'processing':
@@ -391,7 +459,7 @@ export default function BarcodeScanner({
                     autoCorrect={false}
                     returnKeyType="search"
                     onSubmitEditing={handleManualSubmit}
-                    editable={scannerState === 'ready' || scannerState === 'scanning'}
+                    editable={!locked && (scannerState === 'ready' || scannerState === 'scanning')}
                   />
                   {manualInput.length > 0 && (
                     <TouchableOpacity onPress={() => setManualInput('')}>
@@ -402,10 +470,10 @@ export default function BarcodeScanner({
                 <TouchableOpacity
                   style={[
                     styles.searchButton,
-                    (!manualInput.trim() || scannerState === 'cooldown' || scannerState === 'processing') && styles.searchButtonDisabled
+                    (locked || !manualInput.trim() || scannerState === 'cooldown' || scannerState === 'processing') && styles.searchButtonDisabled
                   ]}
                   onPress={handleManualSubmit}
-                  disabled={!manualInput.trim() || scannerState === 'cooldown' || scannerState === 'processing'}
+                  disabled={locked || !manualInput.trim() || scannerState === 'cooldown' || scannerState === 'processing'}
                 >
                   <Ionicons name="search" size={20} color="#FFFFFF" />
                 </TouchableOpacity>
@@ -443,11 +511,12 @@ export default function BarcodeScanner({
 
               {/* Instructions */}
               <Text style={styles.instructionText}>
-                {scannerState === 'ready' && 'Position barcode within frame'}
-                {scannerState === 'scanning' && 'Hold steady for accurate scan'}
-                {scannerState === 'confirming' && 'Barcode confirmed'}
-                {scannerState === 'processing' && 'Looking up booking...'}
-                {scannerState === 'cooldown' && 'Ready for next parcel soon'}
+                {locked && 'Please wait...'}
+                {!locked && scannerState === 'ready' && 'Position barcode within frame'}
+                {!locked && scannerState === 'scanning' && 'Hold steady for accurate scan'}
+                {!locked && scannerState === 'confirming' && 'Barcode confirmed'}
+                {!locked && scannerState === 'processing' && 'Looking up booking...'}
+                {!locked && scannerState === 'cooldown' && 'Ready for next parcel soon'}
               </Text>
             </View>
           ) : (

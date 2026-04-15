@@ -72,6 +72,9 @@ export default function BulkScanScreen() {
   const [manualInput, setManualInput] = useState('');
   const [isSearching, setIsSearching] = useState(false);
 
+  // Scanner lock - prevents new scans while processing
+  const [scannerLocked, setScannerLocked] = useState(false);
+
   const processingBarcode = useRef<string | null>(null);
   const scannedBarcodesRef = useRef<Set<string>>(new Set());
   const listRef = useRef<FlatList>(null);
@@ -105,7 +108,7 @@ export default function BulkScanScreen() {
     }
   };
 
-  const addBookingToList = async (barcode: string) => {
+  const addBookingToList = async (barcode: string): Promise<void> => {
     const normalizedBarcode = barcode.trim().toUpperCase();
 
     if (processingBarcode.current === normalizedBarcode) {
@@ -131,6 +134,7 @@ export default function BulkScanScreen() {
 
     processingBarcode.current = normalizedBarcode;
     setIsSearching(true);
+    setScannerLocked(true); // Lock scanner while processing
 
     // Try up to 2 times for manual input (API can be slow on first request)
     let result = await findBooking(barcode);
@@ -147,6 +151,7 @@ export default function BulkScanScreen() {
     if (!result.success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', result.error || 'Booking not found');
+      setScannerLocked(false); // Unlock scanner
       return;
     }
 
@@ -159,6 +164,7 @@ export default function BulkScanScreen() {
     if (alreadyInList) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert('Already Scanned', `${booking.miles_ref} is already in the list`);
+      setScannerLocked(false); // Unlock scanner
       return;
     }
 
@@ -168,6 +174,7 @@ export default function BulkScanScreen() {
         'Already Delivered',
         `${booking.miles_ref} has already been delivered. It cannot be added to bulk scan.`
       );
+      setScannerLocked(false); // Unlock scanner
       return;
     }
 
@@ -194,15 +201,19 @@ export default function BulkScanScreen() {
       }, 100);
       return newList;
     });
+
+    // Unlock scanner after successful add
+    setScannerLocked(false);
   };
 
-  const handleBarcodeScan = async (barcode: string) => {
+  const handleBarcodeScan = async (barcode: string): Promise<void> => {
     await addBookingToList(barcode);
   };
 
   const handleManualSubmit = async () => {
     const trimmed = manualInput.trim();
     if (!trimmed) return;
+    if (scannerLocked) return; // Don't allow manual input while locked
 
     setManualInput('');
     await addBookingToList(trimmed);
@@ -590,6 +601,7 @@ export default function BulkScanScreen() {
                   autoCorrect={false}
                   returnKeyType="search"
                   onSubmitEditing={handleManualSubmit}
+                  editable={!scannerLocked}
                 />
                 {manualInput.length > 0 && (
                   <TouchableOpacity onPress={() => setManualInput('')}>
@@ -600,10 +612,10 @@ export default function BulkScanScreen() {
               <TouchableOpacity
                 style={[
                   styles.manualInputButton,
-                  !manualInput.trim() && styles.manualInputButtonDisabled
+                  (!manualInput.trim() || scannerLocked) && styles.manualInputButtonDisabled
                 ]}
                 onPress={handleManualSubmit}
-                disabled={!manualInput.trim()}
+                disabled={!manualInput.trim() || scannerLocked}
               >
                 <Ionicons name="add" size={24} color="#FFFFFF" />
               </TouchableOpacity>
@@ -616,6 +628,7 @@ export default function BulkScanScreen() {
                 cooldownMode={true}
                 cooldownDuration={1500}
                 compact={true}
+                locked={scannerLocked}
               />
             </View>
 
@@ -709,17 +722,6 @@ export default function BulkScanScreen() {
                 )}
               </View>
             </View>
-
-            {/* Removed: Showing statuses for
-            {driverTypes.length > 0 && (
-              <View style={styles.driverTypeInfo}>
-                <Ionicons name="person-outline" size={16} color={colors.textLight} />
-                <Text style={styles.driverTypeText}>
-                  Showing statuses for: {driverTypes.map(t => t.toUpperCase()).join(', ')}
-                </Text>
-              </View>
-            )}
-            */}
 
             <View style={styles.statusSection}>
               <Text style={styles.sectionTitle}>Select Status</Text>

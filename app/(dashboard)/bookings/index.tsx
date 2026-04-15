@@ -16,7 +16,6 @@ export default function BookingsIndexScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userName, setUserName] = useState('');
   const [configInitialized, setConfigInitialized] = useState(false);
 
   useEffect(() => {
@@ -42,12 +41,7 @@ export default function BookingsIndexScreen() {
       const loggedIn = await isBizhandleLoggedIn();
       setIsLoggedIn(loggedIn);
 
-      if (loggedIn) {
-        const user = await getBizhandleUser();
-        if (user && user.name) {
-          setUserName(user.name);
-        }
-      } else {
+      if (!loggedIn) {
         router.push('/(dashboard)/bookings/login');
       }
     } catch (error) {
@@ -55,20 +49,6 @@ export default function BookingsIndexScreen() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout from Bizhandle?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: async () => {
-          await logoutFromBizhandle();
-          router.push('/(dashboard)/bookings/login');
-        },
-      },
-    ]);
   };
 
   if (loading) {
@@ -81,13 +61,6 @@ export default function BookingsIndexScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.welcomeText}>Welcome, {userName}</Text>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <Ionicons name="log-out-outline" size={24} color={colors.error} />
-        </TouchableOpacity>
-      </View>
-
       <View style={styles.content}>
         <TouchableOpacity
           style={styles.moduleCard}
@@ -128,22 +101,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: layouts.spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray200,
-  },
-  welcomeText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  logoutButton: {
-    padding: layouts.spacing.sm,
   },
   content: {
     flex: 1,
