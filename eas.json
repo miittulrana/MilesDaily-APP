@@ -1,20 +1,9 @@
 {
   "build": {
-    "development": {
-      "node": "20.11.1",
-      "developmentClient": true,
-      "distribution": "internal",
-      "cache": {
-        "disabled": false
-      },
-      "android": {
-        "buildType": "apk",
-        "gradleCommand": ":app:assembleDebug"
-      }
-    },
     "preview": {
       "node": "20.11.1",
       "distribution": "internal",
+      "channel": "production",
       "cache": {
         "disabled": false
       },

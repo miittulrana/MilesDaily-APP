@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Alert, TextInput } from 'react-native';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, TextInput, Vibration } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { colors } from '../constants/Colors';
 import { layouts } from '../constants/layouts';
 
@@ -11,37 +12,274 @@ interface BarcodeScannerProps {
   onManualSearch?: (barcode: string) => void;
   cooldownMode?: boolean;
   cooldownDuration?: number;
+  compact?: boolean; // When true, hides back button and search input (for bulk scan)
 }
+
+interface ScanBuffer {
+  code: string;
+  count: number;
+  firstSeen: number;
+  lastSeen: number;
+}
+
+// Configuration
+const CONFIG = {
+  // Minimum reads of same barcode to confirm
+  MIN_CONSISTENT_READS: 3,
+  // Time window to collect reads (ms)
+  BUFFER_WINDOW: 600,
+  // Minimum barcode length
+  MIN_LENGTH: 6,
+  // Maximum barcode length
+  MAX_LENGTH: 20,
+  // Time to show confirmation before processing (ms)
+  CONFIRMATION_DISPLAY_TIME: 800,
+  // Buffer cleanup interval (ms)
+  BUFFER_CLEANUP_INTERVAL: 1000,
+  // Stale buffer entry threshold (ms)
+  BUFFER_STALE_THRESHOLD: 2000,
+};
+
+// Validate barcode format
+const isValidBarcodeFormat = (code: string): boolean => {
+  if (!code || typeof code !== 'string') return false;
+
+  const trimmed = code.trim();
+
+  // Length check
+  if (trimmed.length < CONFIG.MIN_LENGTH || trimmed.length > CONFIG.MAX_LENGTH) {
+    return false;
+  }
+
+  // Must be alphanumeric (allows for HAWB codes)
+  // Rejects special characters, control characters, garbage
+  if (!/^[A-Za-z0-9\-]+$/.test(trimmed)) {
+    return false;
+  }
+
+  // Reject if too many consecutive same characters (likely misread)
+  // Allow up to 5 consecutive (910000 pattern is common)
+  if (/(.)\1{5,}/.test(trimmed)) {
+    return false;
+  }
+
+  return true;
+};
+
+// Normalize barcode (trim, uppercase)
+const normalizeBarcode = (code: string): string => {
+  return code.trim().toUpperCase();
+};
 
 export default function BarcodeScanner({
   onScan,
   onManualSearch,
   cooldownMode = false,
   cooldownDuration = 2000,
+  compact = false,
 }: BarcodeScannerProps) {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
-  const [scanned, setScanned] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [manualInput, setManualInput] = useState('');
-  const [cooldownActive, setCooldownActive] = useState(false);
-  const [cooldownRemaining, setCooldownRemaining] = useState(0);
 
+  // Scanner states
+  const [scannerState, setScannerState] = useState<'ready' | 'scanning' | 'confirming' | 'processing' | 'cooldown'>('ready');
+  const [confirmedCode, setConfirmedCode] = useState<string | null>(null);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
+  const [scanProgress, setScanProgress] = useState(0); // 0-100 for visual feedback
+
+  // Refs for scan logic
+  const scanBufferRef = useRef<Map<string, ScanBuffer>>(new Map());
   const isProcessingRef = useRef(false);
   const cooldownTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const bufferCleanupRef = useRef<NodeJS.Timeout | null>(null);
+  const confirmationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Cleanup on unmount
   useEffect(() => {
+    // Start buffer cleanup interval
+    bufferCleanupRef.current = setInterval(() => {
+      cleanupStaleBufferEntries();
+    }, CONFIG.BUFFER_CLEANUP_INTERVAL);
+
     return () => {
-      if (cooldownTimerRef.current) {
-        clearTimeout(cooldownTimerRef.current);
-      }
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-      }
+      if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      if (bufferCleanupRef.current) clearInterval(bufferCleanupRef.current);
+      if (confirmationTimerRef.current) clearTimeout(confirmationTimerRef.current);
     };
   }, []);
 
+  // Cleanup old buffer entries
+  const cleanupStaleBufferEntries = useCallback(() => {
+    const now = Date.now();
+    const buffer = scanBufferRef.current;
+
+    for (const [code, entry] of buffer.entries()) {
+      if (now - entry.lastSeen > CONFIG.BUFFER_STALE_THRESHOLD) {
+        buffer.delete(code);
+      }
+    }
+  }, []);
+
+  // Reset scanner to ready state
+  const resetScanner = useCallback(() => {
+    scanBufferRef.current.clear();
+    isProcessingRef.current = false;
+    setScannerState('ready');
+    setConfirmedCode(null);
+    setScanProgress(0);
+  }, []);
+
+  // Start cooldown period (for bulk mode)
+  const startCooldown = useCallback(() => {
+    if (!cooldownMode) {
+      resetScanner();
+      return;
+    }
+
+    setScannerState('cooldown');
+    setCooldownRemaining(Math.ceil(cooldownDuration / 1000));
+
+    countdownIntervalRef.current = setInterval(() => {
+      setCooldownRemaining((prev) => {
+        if (prev <= 1) {
+          if (countdownIntervalRef.current) {
+            clearInterval(countdownIntervalRef.current);
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    cooldownTimerRef.current = setTimeout(() => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+      resetScanner();
+    }, cooldownDuration);
+  }, [cooldownMode, cooldownDuration, resetScanner]);
+
+  // Process confirmed barcode
+  const processConfirmedBarcode = useCallback((code: string) => {
+    setConfirmedCode(code);
+    setScannerState('confirming');
+
+    // Haptic feedback - success pattern
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    // Brief display of confirmed code, then process
+    confirmationTimerRef.current = setTimeout(() => {
+      setScannerState('processing');
+      onScan(code);
+      startCooldown();
+    }, CONFIG.CONFIRMATION_DISPLAY_TIME);
+  }, [onScan, startCooldown]);
+
+  // Handle raw barcode scan from camera
+  const handleBarCodeScanned = useCallback(({ data }: { data: string }) => {
+    // Ignore if not ready to scan
+    if (scannerState !== 'ready' && scannerState !== 'scanning') {
+      return;
+    }
+
+    if (isProcessingRef.current) {
+      return;
+    }
+
+    // Normalize and validate
+    const normalizedCode = normalizeBarcode(data);
+
+    if (!isValidBarcodeFormat(normalizedCode)) {
+      return; // Silently ignore invalid formats
+    }
+
+    // Update state to scanning if first valid read
+    if (scannerState === 'ready') {
+      setScannerState('scanning');
+    }
+
+    // Add to buffer
+    const now = Date.now();
+    const buffer = scanBufferRef.current;
+    const existing = buffer.get(normalizedCode);
+
+    if (existing) {
+      // Update existing entry
+      existing.count++;
+      existing.lastSeen = now;
+
+      // Check if within time window
+      const timeElapsed = now - existing.firstSeen;
+
+      if (timeElapsed <= CONFIG.BUFFER_WINDOW) {
+        // Update progress indicator
+        const progress = Math.min((existing.count / CONFIG.MIN_CONSISTENT_READS) * 100, 100);
+        setScanProgress(progress);
+
+        // Check if we have enough consistent reads
+        if (existing.count >= CONFIG.MIN_CONSISTENT_READS) {
+          isProcessingRef.current = true;
+          processConfirmedBarcode(normalizedCode);
+        }
+      } else {
+        // Outside window, reset this entry
+        buffer.set(normalizedCode, {
+          code: normalizedCode,
+          count: 1,
+          firstSeen: now,
+          lastSeen: now,
+        });
+        setScanProgress(Math.min((1 / CONFIG.MIN_CONSISTENT_READS) * 100, 100));
+      }
+    } else {
+      // New barcode
+      buffer.set(normalizedCode, {
+        code: normalizedCode,
+        count: 1,
+        firstSeen: now,
+        lastSeen: now,
+      });
+      setScanProgress(Math.min((1 / CONFIG.MIN_CONSISTENT_READS) * 100, 100));
+    }
+  }, [scannerState, processConfirmedBarcode]);
+
+  // Handle manual search
+  const handleManualSubmit = useCallback(() => {
+    const trimmed = manualInput.trim();
+
+    if (!trimmed) return;
+    if (scannerState === 'cooldown' || scannerState === 'processing') return;
+
+    const normalized = normalizeBarcode(trimmed);
+
+    if (!isValidBarcodeFormat(normalized)) {
+      // For manual input, give feedback about invalid format
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+
+    setManualInput('');
+    isProcessingRef.current = true;
+
+    // Skip confirmation for manual entry - user already sees what they typed
+    setScannerState('processing');
+    setConfirmedCode(normalized);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    if (onManualSearch) {
+      onManualSearch(normalized);
+    } else {
+      onScan(normalized);
+    }
+
+    startCooldown();
+  }, [manualInput, scannerState, onManualSearch, onScan, startCooldown]);
+
+  // Permission handling
   if (!permission) {
     return <View style={styles.container} />;
   }
@@ -58,177 +296,168 @@ export default function BarcodeScanner({
     );
   }
 
-  const startCooldown = () => {
-    if (!cooldownMode) return;
+  // Render scan area overlay based on state
+  const renderScanAreaContent = () => {
+    switch (scannerState) {
+      case 'confirming':
+      case 'processing':
+        return (
+          <View style={styles.confirmedOverlay}>
+            <Ionicons name="checkmark-circle" size={48} color="#22c55e" />
+            <Text style={styles.confirmedCode}>{confirmedCode}</Text>
+            <Text style={styles.confirmedLabel}>
+              {scannerState === 'confirming' ? 'Scanned!' : 'Processing...'}
+            </Text>
+          </View>
+        );
 
-    setCooldownActive(true);
-    setCooldownRemaining(Math.ceil(cooldownDuration / 1000));
+      case 'cooldown':
+        return (
+          <View style={styles.cooldownOverlay}>
+            <View style={styles.cooldownBadge}>
+              <Ionicons name="time-outline" size={24} color="#FFFFFF" />
+              <Text style={styles.cooldownText}>Wait {cooldownRemaining}s</Text>
+            </View>
+          </View>
+        );
 
-    countdownIntervalRef.current = setInterval(() => {
-      setCooldownRemaining((prev) => {
-        if (prev <= 1) {
-          if (countdownIntervalRef.current) {
-            clearInterval(countdownIntervalRef.current);
-          }
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+      case 'scanning':
+        return (
+          <View style={styles.scanningOverlay}>
+            <View style={styles.progressContainer}>
+              <View style={[styles.progressBar, { width: `${scanProgress}%` }]} />
+            </View>
+            <Text style={styles.scanningText}>Hold steady...</Text>
+          </View>
+        );
 
-    cooldownTimerRef.current = setTimeout(() => {
-      setCooldownActive(false);
-      setScanned(false);
-      isProcessingRef.current = false;
-      setCooldownRemaining(0);
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-      }
-    }, cooldownDuration);
-  };
-
-  const handleBarCodeScanned = ({ data }: { data: string }) => {
-    if (scanned || isProcessingRef.current || cooldownActive) return;
-
-    isProcessingRef.current = true;
-    setScanned(true);
-
-    onScan(data);
-
-    if (cooldownMode) {
-      startCooldown();
-    } else {
-      setTimeout(() => {
-        setScanned(false);
-        isProcessingRef.current = false;
-      }, 2000);
+      default:
+        return null;
     }
   };
 
-  const handleManualSubmit = () => {
-    if (manualInput.trim() && onManualSearch) {
-      if (cooldownMode && cooldownActive) {
-        return;
-      }
-      onManualSearch(manualInput.trim());
-      setManualInput('');
-      if (cooldownMode) {
-        setScanned(true);
-        isProcessingRef.current = true;
-        startCooldown();
-      }
+  // Get status indicator config
+  const getStatusConfig = () => {
+    switch (scannerState) {
+      case 'ready':
+        return { color: colors.success, icon: 'scan-outline' as const, text: 'Ready to scan' };
+      case 'scanning':
+        return { color: colors.warning, icon: 'radio-button-on' as const, text: 'Reading...' };
+      case 'confirming':
+        return { color: colors.success, icon: 'checkmark-circle' as const, text: 'Confirmed!' };
+      case 'processing':
+        return { color: colors.primary, icon: 'sync' as const, text: 'Processing...' };
+      case 'cooldown':
+        return { color: colors.warning, icon: 'hourglass-outline' as const, text: 'Move to next parcel' };
+      default:
+        return { color: colors.gray400, icon: 'scan-outline' as const, text: '' };
     }
   };
+
+  const statusConfig = getStatusConfig();
 
   return (
     <View style={styles.container}>
       <CameraView
         style={styles.camera}
         facing="back"
+        enableTorch={torchOn}
         onBarcodeScanned={handleBarCodeScanned}
         barcodeScannerSettings={{
-          barcodeTypes: ['qr', 'code128', 'code39', 'ean13', 'ean8'],
+          barcodeTypes: ['qr', 'code128', 'code39', 'ean13', 'ean8', 'codabar', 'itf14'],
         }}
       >
         <View style={styles.overlay}>
-          <View style={styles.topOverlay}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => router.back()}
-            >
-              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-
-            <View style={styles.manualSearchContainer}>
-              <View style={styles.searchInputWrapper}>
-                <Ionicons name="barcode-outline" size={18} color="#FFFFFF" />
-                <TextInput
-                  style={styles.manualSearchInput}
-                  value={manualInput}
-                  onChangeText={setManualInput}
-                  placeholder="Type booking number..."
-                  placeholderTextColor="rgba(255,255,255,0.6)"
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  returnKeyType="search"
-                  onSubmitEditing={handleManualSubmit}
-                  editable={!cooldownActive}
-                />
-                {manualInput.length > 0 && (
-                  <TouchableOpacity onPress={() => setManualInput('')}>
-                    <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.8)" />
-                  </TouchableOpacity>
-                )}
-              </View>
+          {/* Top section - back button and manual search (hidden in compact mode) */}
+          {!compact && (
+            <View style={styles.topOverlay}>
               <TouchableOpacity
-                style={[
-                  styles.searchButton,
-                  (!manualInput.trim() || cooldownActive) && styles.searchButtonDisabled
-                ]}
-                onPress={handleManualSubmit}
-                disabled={!manualInput.trim() || cooldownActive}
+                style={styles.backButton}
+                onPress={() => router.back()}
               >
-                <Ionicons name="search" size={20} color="#FFFFFF" />
+                <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
               </TouchableOpacity>
-            </View>
-          </View>
 
+              <View style={styles.manualSearchContainer}>
+                <View style={styles.searchInputWrapper}>
+                  <Ionicons name="barcode-outline" size={18} color="#FFFFFF" />
+                  <TextInput
+                    style={styles.manualSearchInput}
+                    value={manualInput}
+                    onChangeText={setManualInput}
+                    placeholder="Type booking number..."
+                    placeholderTextColor="rgba(255,255,255,0.6)"
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    returnKeyType="search"
+                    onSubmitEditing={handleManualSubmit}
+                    editable={scannerState === 'ready' || scannerState === 'scanning'}
+                  />
+                  {manualInput.length > 0 && (
+                    <TouchableOpacity onPress={() => setManualInput('')}>
+                      <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.8)" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.searchButton,
+                    (!manualInput.trim() || scannerState === 'cooldown' || scannerState === 'processing') && styles.searchButtonDisabled
+                  ]}
+                  onPress={handleManualSubmit}
+                  disabled={!manualInput.trim() || scannerState === 'cooldown' || scannerState === 'processing'}
+                >
+                  <Ionicons name="search" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Compact mode top spacer - flex to push content to center */}
+          {compact && <View style={styles.compactTopSpacer} />}
+
+          {/* Middle section - scan area */}
           <View style={styles.middleRow}>
             <View style={styles.sideOverlay} />
             <View style={styles.scanArea}>
+              {/* Corner markers */}
               <View style={[styles.corner, styles.topLeft]} />
               <View style={[styles.corner, styles.topRight]} />
               <View style={[styles.corner, styles.bottomLeft]} />
               <View style={[styles.corner, styles.bottomRight]} />
 
-              {cooldownMode && cooldownActive && (
-                <View style={styles.cooldownOverlay}>
-                  <View style={styles.cooldownBadge}>
-                    <Ionicons name="time-outline" size={24} color="#FFFFFF" />
-                    <Text style={styles.cooldownText}>Wait {cooldownRemaining}s</Text>
-                  </View>
-                </View>
-              )}
+              {/* State-based content */}
+              {renderScanAreaContent()}
             </View>
             <View style={styles.sideOverlay} />
           </View>
 
-          <View style={styles.bottomOverlay}>
-            {cooldownMode && (
-              <View style={[
-                styles.statusIndicator,
-                cooldownActive ? styles.statusIndicatorBusy : styles.statusIndicatorReady
-              ]}>
-                <Ionicons
-                  name={cooldownActive ? "hourglass-outline" : "checkmark-circle"}
-                  size={16}
-                  color="#FFFFFF"
-                />
-                <Text style={styles.statusIndicatorText}>
-                  {cooldownActive ? 'Processing...' : 'Ready to scan'}
-                </Text>
+          {/* Bottom section - status and controls */}
+          {!compact ? (
+            <View style={styles.bottomOverlay}>
+              {/* Status indicator */}
+              <View style={[styles.statusIndicator, { backgroundColor: statusConfig.color }]}>
+                <Ionicons name={statusConfig.icon} size={16} color="#FFFFFF" />
+                <Text style={styles.statusIndicatorText}>{statusConfig.text}</Text>
               </View>
-            )}
 
-            <TouchableOpacity
-              style={styles.torchButton}
-              onPress={() => setTorchOn(!torchOn)}
-            >
-              <Ionicons
-                name={torchOn ? 'flashlight' : 'flashlight-outline'}
-                size={32}
-                color={colors.background}
-              />
-            </TouchableOpacity>
-            <Text style={styles.instructionText}>
-              {cooldownMode
-                ? (cooldownActive
-                  ? 'Move to next parcel...'
-                  : 'Position barcode within frame to scan')
-                : 'Position barcode within frame to scan'
-              }
-            </Text>
-          </View>
+              {/* Instructions */}
+              <Text style={styles.instructionText}>
+                {scannerState === 'ready' && 'Position barcode within frame'}
+                {scannerState === 'scanning' && 'Hold steady for accurate scan'}
+                {scannerState === 'confirming' && 'Barcode confirmed'}
+                {scannerState === 'processing' && 'Looking up booking...'}
+                {scannerState === 'cooldown' && 'Ready for next parcel soon'}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.compactBottomSpacer}>
+              <View style={[styles.compactStatusIndicator, { backgroundColor: statusConfig.color }]}>
+                <Ionicons name={statusConfig.icon} size={14} color="#FFFFFF" />
+                <Text style={styles.compactStatusText}>{statusConfig.text}</Text>
+              </View>
+            </View>
+          )}
         </View>
       </CameraView>
     </View>
@@ -250,6 +479,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     paddingTop: 60,
     paddingHorizontal: 16,
+  },
+  compactTopSpacer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
   },
   backButton: {
     width: 44,
@@ -298,20 +531,24 @@ const styles = StyleSheet.create({
   },
   middleRow: {
     flexDirection: 'row',
-    height: 250,
+    height: 180,
+    alignItems: 'center',
   },
   sideOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
   },
   scanArea: {
-    width: 250,
+    width: 240,
+    height: 160,
     position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   corner: {
     position: 'absolute',
-    width: 40,
-    height: 40,
+    width: 28,
+    height: 28,
     borderColor: colors.primary,
   },
   topLeft: {
@@ -319,25 +556,55 @@ const styles = StyleSheet.create({
     left: 0,
     borderTopWidth: 4,
     borderLeftWidth: 4,
+    borderTopLeftRadius: 8,
   },
   topRight: {
     top: 0,
     right: 0,
     borderTopWidth: 4,
     borderRightWidth: 4,
+    borderTopRightRadius: 8,
   },
   bottomLeft: {
     bottom: 0,
     left: 0,
     borderBottomWidth: 4,
     borderLeftWidth: 4,
+    borderBottomLeftRadius: 8,
   },
   bottomRight: {
     bottom: 0,
     right: 0,
     borderBottomWidth: 4,
     borderRightWidth: 4,
+    borderBottomRightRadius: 8,
   },
+  // Confirmed state overlay
+  confirmedOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 4,
+  },
+  confirmedCode: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 8,
+    letterSpacing: 1,
+  },
+  confirmedLabel: {
+    color: '#22c55e',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  // Cooldown overlay
   cooldownOverlay: {
     position: 'absolute',
     top: 0,
@@ -362,12 +629,58 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+  // Scanning state overlay
+  scanningOverlay: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+    right: 16,
+    alignItems: 'center',
+  },
+  progressContainer: {
+    width: '100%',
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 2,
+  },
+  scanningText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   bottomOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingBottom: layouts.spacing.xl,
+  },
+  compactBottomSpacer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingTop: 16,
+  },
+  compactStatusIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 18,
+    gap: 5,
+  },
+  compactStatusText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
   statusIndicator: {
     flexDirection: 'row',
@@ -377,12 +690,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginBottom: layouts.spacing.md,
     gap: 6,
-  },
-  statusIndicatorReady: {
-    backgroundColor: colors.success,
-  },
-  statusIndicatorBusy: {
-    backgroundColor: colors.warning,
   },
   statusIndicatorText: {
     color: '#FFFFFF',

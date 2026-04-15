@@ -8,8 +8,13 @@ import {
   TouchableOpacity,
   ScrollView,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  TextInput,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { findBooking, getStatuses, updateBooking } from '../../../lib/bizhandleApi';
@@ -63,8 +68,13 @@ export default function BulkScanScreen() {
   const [bulkReason, setBulkReason] = useState<string>('');
   const [bulkPhotos, setBulkPhotos] = useState<CompressedImage[]>([]);
 
+  // Manual input state
+  const [manualInput, setManualInput] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+
   const processingBarcode = useRef<string | null>(null);
   const scannedBarcodesRef = useRef<Set<string>>(new Set());
+  const listRef = useRef<FlatList>(null);
 
   useEffect(() => {
     loadInitialData();
@@ -95,7 +105,7 @@ export default function BulkScanScreen() {
     }
   };
 
-  const handleBarcodeScan = async (barcode: string) => {
+  const addBookingToList = async (barcode: string) => {
     const normalizedBarcode = barcode.trim().toUpperCase();
 
     if (processingBarcode.current === normalizedBarcode) {
@@ -103,6 +113,7 @@ export default function BulkScanScreen() {
     }
 
     if (scannedBarcodesRef.current.has(normalizedBarcode)) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert('Already Scanned', `${barcode} is already in the list`);
       return;
     }
@@ -113,19 +124,28 @@ export default function BulkScanScreen() {
     );
 
     if (alreadyScanned) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert('Already Scanned', `${barcode} is already in the list`);
       return;
     }
 
     processingBarcode.current = normalizedBarcode;
-    setLoading(true);
+    setIsSearching(true);
 
-    const result = await findBooking(barcode);
+    // Try up to 2 times for manual input (API can be slow on first request)
+    let result = await findBooking(barcode);
 
-    setLoading(false);
+    if (!result.success && result.error === 'Booking not found') {
+      // Wait briefly and retry once
+      await new Promise(resolve => setTimeout(resolve, 500));
+      result = await findBooking(barcode);
+    }
+
+    setIsSearching(false);
     processingBarcode.current = null;
 
     if (!result.success) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', result.error || 'Booking not found');
       return;
     }
@@ -137,11 +157,13 @@ export default function BulkScanScreen() {
     );
 
     if (alreadyInList) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert('Already Scanned', `${booking.miles_ref} is already in the list`);
       return;
     }
 
     if (booking.status.status_id === DELIVERED_STATUS_ID) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert(
         'Already Delivered',
         `${booking.miles_ref} has already been delivered. It cannot be added to bulk scan.`
@@ -163,7 +185,27 @@ export default function BulkScanScreen() {
     scannedBarcodesRef.current.add(booking.miles_ref.toUpperCase());
     scannedBarcodesRef.current.add(booking.hawb.toUpperCase());
 
-    setScannedBookings(prev => [...prev, scannedBooking]);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setScannedBookings(prev => {
+      const newList = [...prev, scannedBooking];
+      // Scroll to bottom after adding
+      setTimeout(() => {
+        listRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+      return newList;
+    });
+  };
+
+  const handleBarcodeScan = async (barcode: string) => {
+    await addBookingToList(barcode);
+  };
+
+  const handleManualSubmit = async () => {
+    const trimmed = manualInput.trim();
+    if (!trimmed) return;
+
+    setManualInput('');
+    await addBookingToList(trimmed);
   };
 
   const handleRemoveBooking = (index: number) => {
@@ -172,13 +214,14 @@ export default function BulkScanScreen() {
     scannedBarcodesRef.current.delete(bookingToRemove.miles_ref.toUpperCase());
     scannedBarcodesRef.current.delete(bookingToRemove.hawb.toUpperCase());
 
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setScannedBookings(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleClearAll = () => {
     Alert.alert(
       'Clear All',
-      'Are you sure you want to remove all scanned bookings?',
+      `Remove all ${scannedBookings.length} scanned bookings?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -187,6 +230,7 @@ export default function BulkScanScreen() {
           onPress: () => {
             scannedBarcodesRef.current.clear();
             setScannedBookings([]);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           }
         }
       ]
@@ -474,179 +518,248 @@ export default function BulkScanScreen() {
 
   const renderBookingItem = useCallback(({ item, index }: { item: ScannedBooking; index: number }) => (
     <View style={styles.bookingItem}>
-      <View style={styles.bookingItemLeft}>
-        <View style={styles.bookingItemIndex}>
-          <Text style={styles.bookingItemIndexText}>{index + 1}</Text>
-        </View>
-        <View style={styles.bookingItemInfo}>
-          <Text style={styles.bookingItemRef}>{item.miles_ref}</Text>
-          <Text style={styles.bookingItemHawb}>{item.hawb}</Text>
-          {item.codInfo?.hasCOD && (
-            <View style={styles.codIndicator}>
-              <Ionicons name="cash" size={12} color="#92400e" />
-              <Text style={styles.codIndicatorText}>
-                COD {item.codInfo.amount ? `${item.codInfo.currency} ${item.codInfo.amount.toFixed(2)}` : ''}
-              </Text>
-            </View>
-          )}
-        </View>
+      <View style={styles.bookingItemNumber}>
+        <Text style={styles.bookingItemNumberText}>{index + 1}</Text>
       </View>
+      <View style={styles.bookingItemContent}>
+        <Text style={styles.bookingItemRef}>{item.miles_ref}</Text>
+        <Text style={styles.bookingItemHawb}>{item.hawb}</Text>
+      </View>
+      {item.codInfo?.hasCOD && (
+        <View style={styles.codBadge}>
+          <Text style={styles.codBadgeText}>COD</Text>
+        </View>
+      )}
       <TouchableOpacity
         style={styles.removeButton}
         onPress={() => handleRemoveBooking(index)}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        <Ionicons name="close-circle" size={24} color={colors.error} />
+        <Ionicons name="close-circle" size={22} color={colors.error} />
       </TouchableOpacity>
     </View>
   ), [scannedBookings]);
+
+  const renderEmptyList = () => (
+    <View style={styles.emptyList}>
+      <Ionicons name="cube-outline" size={48} color={colors.gray300} />
+      <Text style={styles.emptyListTitle}>No bookings scanned</Text>
+      <Text style={styles.emptyListText}>Scan barcodes or type booking numbers above</Text>
+    </View>
+  );
 
   if (loading) {
     return <LoadingIndicator fullScreen message="Processing..." />;
   }
 
   return (
-    <View style={styles.container}>
-      {scanning && !showStatusSelector && (
-        <>
-          <View style={styles.scannerContainer}>
-            <BarcodeScanner
-              onScan={handleBarcodeScan}
-              onManualSearch={handleBarcodeScan}
-              cooldownMode={true}
-              cooldownDuration={2000}
-            />
-          </View>
-
-          <View style={styles.scannedListContainer}>
-            <View style={styles.listHeader}>
-              <Text style={styles.listTitle}>
-                Scanned Bookings ({scannedBookings.length})
-              </Text>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        {scanning && !showStatusSelector && (
+          <>
+            {/* Header */}
+            <View style={styles.header}>
+              <TouchableOpacity
+                style={styles.headerBackButton}
+                onPress={() => router.back()}
+              >
+                <Ionicons name="arrow-back" size={24} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Bulk Scan</Text>
               {scannedBookings.length > 0 && (
                 <TouchableOpacity onPress={handleClearAll}>
-                  <Text style={styles.clearAllText}>Clear All</Text>
+                  <Text style={styles.clearAllButton}>Clear All</Text>
                 </TouchableOpacity>
               )}
             </View>
 
-            {scannedBookings.length === 0 ? (
-              <View style={styles.emptyList}>
-                <Ionicons name="scan-outline" size={48} color={colors.gray400} />
-                <Text style={styles.emptyListText}>Scan barcodes to add bookings</Text>
-              </View>
-            ) : (
-              <>
-                <FlatList
-                  data={scannedBookings}
-                  renderItem={renderBookingItem}
-                  keyExtractor={(item) => item.booking_id.toString()}
-                  style={styles.bookingList}
+            {/* Manual Input */}
+            <View style={styles.manualInputContainer}>
+              <View style={styles.manualInputWrapper}>
+                <Ionicons name="barcode-outline" size={20} color={colors.gray400} />
+                <TextInput
+                  style={styles.manualInput}
+                  value={manualInput}
+                  onChangeText={setManualInput}
+                  placeholder="Type booking number..."
+                  placeholderTextColor={colors.gray400}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                  onSubmitEditing={handleManualSubmit}
                 />
+                {manualInput.length > 0 && (
+                  <TouchableOpacity onPress={() => setManualInput('')}>
+                    <Ionicons name="close-circle" size={20} color={colors.gray400} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.manualInputButton,
+                  !manualInput.trim() && styles.manualInputButtonDisabled
+                ]}
+                onPress={handleManualSubmit}
+                disabled={!manualInput.trim()}
+              >
+                <Ionicons name="add" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
 
+            {/* Scanner - Compact */}
+            <View style={styles.scannerWrapper}>
+              <BarcodeScanner
+                onScan={handleBarcodeScan}
+                cooldownMode={true}
+                cooldownDuration={1500}
+                compact={true}
+              />
+            </View>
+
+            {/* Scanned List */}
+            <View style={styles.listContainer}>
+              <View style={styles.listHeader}>
+                <Ionicons name="layers-outline" size={20} color={colors.text} />
+                <Text style={styles.listTitle}>Scanned</Text>
+                <View style={styles.countBadge}>
+                  <Text style={styles.countBadgeText}>{scannedBookings.length}</Text>
+                </View>
+              </View>
+
+              {isSearching && (
+                <View style={styles.searchingIndicator}>
+                  <Text style={styles.searchingText}>Looking up booking...</Text>
+                </View>
+              )}
+
+              <FlatList
+                ref={listRef}
+                data={scannedBookings}
+                renderItem={renderBookingItem}
+                keyExtractor={(item) => item.booking_id.toString()}
+                style={styles.bookingList}
+                contentContainerStyle={scannedBookings.length === 0 ? styles.emptyListContainer : styles.listContent}
+                ListEmptyComponent={renderEmptyList}
+                showsVerticalScrollIndicator={true}
+              />
+            </View>
+
+            {/* Proceed Button - Fixed at bottom */}
+            {scannedBookings.length > 0 && (
+              <View style={styles.proceedContainer}>
                 <TouchableOpacity
                   style={styles.proceedButton}
                   onPress={handleProceedToStatus}
                 >
-                  <Ionicons name="arrow-forward" size={20} color={colors.background} />
+                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
                   <Text style={styles.proceedButtonText}>
                     Proceed with {scannedBookings.length} booking{scannedBookings.length !== 1 ? 's' : ''}
                   </Text>
                 </TouchableOpacity>
-              </>
+              </View>
             )}
-          </View>
-        </>
-      )}
+          </>
+        )}
 
-      {showStatusSelector && (
-        <ScrollView style={styles.content}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={handleBackToScanning}
-          >
-            <Ionicons name="arrow-back" size={24} color={colors.text} />
-            <Text style={styles.backButtonText}>Back to Scanning</Text>
-          </TouchableOpacity>
+        {showStatusSelector && (
+          <ScrollView style={styles.statusContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.statusHeader}>
+              <TouchableOpacity
+                style={styles.statusBackButton}
+                onPress={handleBackToScanning}
+              >
+                <Ionicons name="arrow-back" size={24} color={colors.text} />
+                <Text style={styles.statusBackButtonText}>Back to Scanning</Text>
+              </TouchableOpacity>
+            </View>
 
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryHeader}>
-              <Ionicons name="layers-outline" size={32} color={colors.primary} />
-              <View style={styles.summaryInfo}>
-                <Text style={styles.summaryTitle}>
-                  {scannedBookings.length} Booking{scannedBookings.length !== 1 ? 's' : ''} Selected
-                </Text>
-                <Text style={styles.summarySubtitle}>
-                  Select a status to apply to all
-                </Text>
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryHeader}>
+                <View style={styles.summaryIcon}>
+                  <Ionicons name="layers" size={24} color={colors.primary} />
+                </View>
+                <View style={styles.summaryInfo}>
+                  <Text style={styles.summaryTitle}>
+                    {scannedBookings.length} Booking{scannedBookings.length !== 1 ? 's' : ''} Selected
+                  </Text>
+                  <Text style={styles.summarySubtitle}>
+                    Select a status to apply to all
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.bookingSummaryList}>
+                {scannedBookings.slice(0, 6).map((booking, index) => (
+                  <View key={booking.booking_id} style={styles.summaryBookingItem}>
+                    <Text style={styles.summaryBookingRef}>{booking.miles_ref}</Text>
+                    {booking.codInfo?.hasCOD && (
+                      <View style={styles.smallCodBadge}>
+                        <Text style={styles.smallCodBadgeText}>COD</Text>
+                      </View>
+                    )}
+                  </View>
+                ))}
+                {scannedBookings.length > 6 && (
+                  <View style={styles.moreBookingsBadge}>
+                    <Text style={styles.moreBookingsText}>+{scannedBookings.length - 6} more</Text>
+                  </View>
+                )}
               </View>
             </View>
 
-            <View style={styles.bookingSummaryList}>
-              {scannedBookings.slice(0, 5).map((booking, index) => (
-                <View key={booking.booking_id} style={styles.summaryBookingItem}>
-                  <Text style={styles.summaryBookingRef}>{booking.miles_ref}</Text>
-                  {booking.codInfo?.hasCOD && (
-                    <View style={styles.smallCodBadge}>
-                      <Text style={styles.smallCodBadgeText}>COD</Text>
-                    </View>
-                  )}
-                </View>
-              ))}
-              {scannedBookings.length > 5 && (
-                <Text style={styles.moreBookingsText}>
-                  +{scannedBookings.length - 5} more...
+            {/* Removed: Showing statuses for
+            {driverTypes.length > 0 && (
+              <View style={styles.driverTypeInfo}>
+                <Ionicons name="person-outline" size={16} color={colors.textLight} />
+                <Text style={styles.driverTypeText}>
+                  Showing statuses for: {driverTypes.map(t => t.toUpperCase()).join(', ')}
                 </Text>
-              )}
+              </View>
+            )}
+            */}
+
+            <View style={styles.statusSection}>
+              <Text style={styles.sectionTitle}>Select Status</Text>
+              <StatusSelector
+                statuses={statuses}
+                driverTypes={driverTypes}
+                onSelect={handleStatusSelect}
+                onStatusRequirementCheck={handleStatusRequirementCheck}
+              />
             </View>
-          </View>
+          </ScrollView>
+        )}
 
-          {driverTypes.length > 0 && (
-            <View style={styles.driverTypeInfo}>
-              <Ionicons name="person-outline" size={16} color={colors.textLight} />
-              <Text style={styles.driverTypeText}>
-                Showing statuses for: {driverTypes.map(t => t.toUpperCase()).join(', ')}
-              </Text>
-            </View>
-          )}
+        <ReasonInputModal
+          visible={showReasonInput}
+          statusId={pendingStatus?.status_id || 0}
+          statusName={pendingStatus?.name || ''}
+          onSubmit={handleReasonSubmitted}
+          onCancel={() => {
+            setShowReasonInput(false);
+            setPendingStatus(null);
+            setPendingRequirements(null);
+          }}
+        />
 
-          <View style={styles.statusSection}>
-            <Text style={styles.sectionTitle}>Select Status</Text>
-            <StatusSelector
-              statuses={statuses}
-              driverTypes={driverTypes}
-              onSelect={handleStatusSelect}
-              onStatusRequirementCheck={handleStatusRequirementCheck}
-            />
-          </View>
-        </ScrollView>
-      )}
-
-      <ReasonInputModal
-        visible={showReasonInput}
-        statusId={pendingStatus?.status_id || 0}
-        statusName={pendingStatus?.name || ''}
-        onSubmit={handleReasonSubmitted}
-        onCancel={() => {
-          setShowReasonInput(false);
-          setPendingStatus(null);
-          setPendingRequirements(null);
-        }}
-      />
-
-      <StatusPhotoCapture
-        visible={showPhotoCapture}
-        statusId={pendingStatus?.status_id || 0}
-        statusName={`${pendingStatus?.name || ''} - All ${scannedBookings.length} bookings`}
-        onComplete={handlePhotosCaptured}
-        onCancel={() => {
-          setShowPhotoCapture(false);
-          setPendingStatus(null);
-          setPendingRequirements(null);
-          setCurrentBookingIndex(0);
-        }}
-        maxPhotos={2}
-      />
-    </View>
+        <StatusPhotoCapture
+          visible={showPhotoCapture}
+          statusId={pendingStatus?.status_id || 0}
+          statusName={`${pendingStatus?.name || ''} - All ${scannedBookings.length} bookings`}
+          onComplete={handlePhotosCaptured}
+          onCancel={() => {
+            setShowPhotoCapture(false);
+            setPendingStatus(null);
+            setPendingRequirements(null);
+            setCurrentBookingIndex(0);
+          }}
+          maxPhotos={2}
+        />
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -655,146 +768,276 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  scannerContainer: {
+  keyboardView: {
     flex: 1,
-    maxHeight: '50%',
   },
-  scannedListContainer: {
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray200,
+    backgroundColor: colors.background,
+  },
+  headerBackButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.gray100,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
     flex: 1,
-    padding: layouts.spacing.lg,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginLeft: 12,
+  },
+  clearAllButton: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.error,
+  },
+
+  // Manual Input
+  manualInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 10,
+    backgroundColor: colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray200,
+  },
+  manualInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.gray100,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+  },
+  manualInput: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  manualInputButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  manualInputButtonDisabled: {
+    backgroundColor: colors.gray300,
+  },
+
+  // Scanner
+  scannerWrapper: {
+    height: 260,
+    backgroundColor: '#000',
+    overflow: 'hidden',
+  },
+
+  // List
+  listContainer: {
+    flex: 1,
     backgroundColor: colors.background,
   },
   listHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: layouts.spacing.md,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray200,
+    gap: 8,
   },
   listTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  clearAllText: {
-    fontSize: 14,
-    color: colors.error,
+    fontSize: 16,
     fontWeight: '600',
+    color: colors.text,
+    flex: 1,
+  },
+  countBadge: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    minWidth: 28,
+    alignItems: 'center',
+  },
+  countBadgeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  searchingIndicator: {
+    backgroundColor: colors.gray100,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  searchingText: {
+    fontSize: 13,
+    color: colors.textLight,
+    textAlign: 'center',
+  },
+  bookingList: {
+    flex: 1,
+  },
+  listContent: {
+    paddingVertical: 8,
+  },
+  emptyListContainer: {
+    flex: 1,
   },
   emptyList: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyListTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.gray500,
+    marginTop: 12,
   },
   emptyListText: {
-    marginTop: layouts.spacing.md,
     fontSize: 14,
-    color: colors.textLight,
+    color: colors.gray400,
+    marginTop: 4,
   },
-  bookingList: {
-    flex: 1,
-  },
+
+  // Booking Item
   bookingItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.card,
-    padding: layouts.spacing.md,
-    borderRadius: layouts.borderRadius.md,
-    marginBottom: layouts.spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.gray200,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray100,
   },
-  bookingItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  bookingItemIndex: {
+  bookingItemNumber: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.gray200,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: layouts.spacing.md,
+    marginRight: 12,
   },
-  bookingItemIndexText: {
-    color: colors.background,
+  bookingItemNumberText: {
     fontSize: 12,
     fontWeight: '700',
+    color: colors.text,
   },
-  bookingItemInfo: {
+  bookingItemContent: {
     flex: 1,
   },
   bookingItemRef: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: colors.text,
   },
   bookingItemHawb: {
     fontSize: 12,
     color: colors.textLight,
+    marginTop: 2,
   },
-  codIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: layouts.spacing.xs,
-    gap: 4,
+  codBadge: {
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginRight: 8,
   },
-  codIndicatorText: {
+  codBadgeText: {
     fontSize: 11,
+    fontWeight: '700',
     color: '#92400e',
-    fontWeight: '600',
   },
   removeButton: {
-    padding: layouts.spacing.xs,
+    padding: 4,
+  },
+
+  // Proceed Button
+  proceedContainer: {
+    padding: 16,
+    paddingBottom: 32,
+    backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray200,
   },
   proceedButton: {
     flexDirection: 'row',
-    backgroundColor: colors.primary,
-    paddingVertical: layouts.spacing.md,
-    borderRadius: layouts.borderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: layouts.spacing.sm,
-    marginTop: layouts.spacing.md,
+    backgroundColor: colors.primary,
+    paddingVertical: 16,
+    borderRadius: 12,
+    gap: 8,
   },
   proceedButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: colors.background,
+    color: '#FFFFFF',
   },
-  content: {
+
+  // Status Selection Screen
+  statusContent: {
     flex: 1,
-    padding: layouts.spacing.lg,
+    padding: 16,
   },
-  backButton: {
+  statusHeader: {
+    marginBottom: 16,
+  },
+  statusBackButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: layouts.spacing.md,
-    gap: layouts.spacing.sm,
+    gap: 8,
   },
-  backButtonText: {
+  statusBackButtonText: {
     fontSize: 16,
-    color: colors.text,
     fontWeight: '600',
+    color: colors.text,
   },
   summaryCard: {
     backgroundColor: colors.card,
-    borderRadius: layouts.borderRadius.lg,
-    padding: layouts.spacing.lg,
-    marginBottom: layouts.spacing.lg,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: colors.gray200,
   },
   summaryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: layouts.spacing.md,
+    marginBottom: 16,
+  },
+  summaryIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: `${colors.primary}15`,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   summaryInfo: {
     flex: 1,
-    marginLeft: layouts.spacing.md,
+    marginLeft: 12,
   },
   summaryTitle: {
     fontSize: 18,
@@ -804,20 +1047,21 @@ const styles = StyleSheet.create({
   summarySubtitle: {
     fontSize: 14,
     color: colors.textLight,
+    marginTop: 2,
   },
   bookingSummaryList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: layouts.spacing.sm,
+    gap: 8,
   },
   summaryBookingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.gray100,
-    paddingHorizontal: layouts.spacing.sm,
-    paddingVertical: layouts.spacing.xs,
-    borderRadius: layouts.borderRadius.sm,
-    gap: layouts.spacing.xs,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
   },
   summaryBookingRef: {
     fontSize: 12,
@@ -835,32 +1079,37 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#92400e',
   },
+  moreBookingsBadge: {
+    backgroundColor: colors.gray200,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
   moreBookingsText: {
     fontSize: 12,
+    fontWeight: '600',
     color: colors.textLight,
-    fontStyle: 'italic',
-    alignSelf: 'center',
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: layouts.spacing.sm,
+    marginBottom: 12,
   },
   driverTypeInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.gray100,
-    padding: layouts.spacing.sm,
-    borderRadius: layouts.borderRadius.md,
-    marginBottom: layouts.spacing.md,
-    gap: layouts.spacing.xs,
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 16,
+    gap: 8,
   },
   driverTypeText: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textLight,
   },
   statusSection: {
-    marginBottom: layouts.spacing.lg,
+    marginBottom: 24,
   },
 });

@@ -70,6 +70,15 @@
       ]
     ],
     "scheme": "fleet-management",
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/88c8bcec-86c5-4a3b-8b7c-b49fcbce38b4"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "extra": {
       "router": {
         "origin": false

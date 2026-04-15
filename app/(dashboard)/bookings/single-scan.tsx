@@ -7,16 +7,21 @@ import {
   Alert,
   TouchableOpacity,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  TextInput,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import { findBooking, getStatuses, updateBooking } from '../../../lib/bizhandleApi';
 import { Booking, Status } from '../../../lib/bizhandleTypes';
 import { getDriverInfo } from '../../../lib/auth';
 import { DriverType, COD_CASH_COLLECTED_STATUS_ID, DELIVERED_STATUS_ID } from '../../../lib/statusPermissions';
-import { 
-  parseCODFromSpecialInstruction, 
+import {
+  parseCODFromSpecialInstruction,
   validateStatusSelection,
   checkLeftMessageDailyCount,
   isLeftMessageStatus,
@@ -45,17 +50,21 @@ export default function SingleScanScreen() {
   const params = useLocalSearchParams();
   const [scanning, setScanning] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Processing...');
+  const [showFoundConfirmation, setShowFoundConfirmation] = useState(false);
+  const [foundBookingRef, setFoundBookingRef] = useState<string | null>(null);
   const [booking, setBooking] = useState<Booking | null>(null);
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<Status | null>(null);
   const [showStatusSelector, setShowStatusSelector] = useState(false);
   const [driverTypes, setDriverTypes] = useState<DriverType[]>([]);
+  const [manualInput, setManualInput] = useState('');
 
   const [showCallConfirmation, setShowCallConfirmation] = useState(false);
   const [showReasonInput, setShowReasonInput] = useState(false);
   const [showCODConfirmation, setShowCODConfirmation] = useState(false);
   const [showPhotoCapture, setShowPhotoCapture] = useState(false);
-  
+
   const [pendingStatus, setPendingStatus] = useState<Status | null>(null);
   const [pendingRequirements, setPendingRequirements] = useState<{
     callRequired: boolean;
@@ -114,19 +123,31 @@ export default function SingleScanScreen() {
       return;
     }
 
+    setScanning(false);
+    setFoundBookingRef(barcode.trim().toUpperCase());
+    setLoadingMessage('Looking up booking...');
     setLoading(true);
 
-    const result = await findBooking(barcode.trim());
+    // Try up to 2 times (API can be slow on first request)
+    let result = await findBooking(barcode.trim());
+
+    if (!result.success && result.error === 'Booking not found') {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      result = await findBooking(barcode.trim());
+    }
 
     if (!result.success) {
-      Alert.alert('Error', result.error || 'Booking not found');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setLoading(false);
+      setFoundBookingRef(null);
+      setScanning(true);
+      Alert.alert('Error', result.error || 'Booking not found');
       return;
     }
 
     const bookingData = result.booking!;
     setBooking(bookingData);
-    
+
     if (bookingData.special_instruction) {
       const cod = parseCODFromSpecialInstruction(bookingData.special_instruction);
       setCodInfo(cod);
@@ -134,9 +155,16 @@ export default function SingleScanScreen() {
       setCodInfo(DEFAULT_COD_INFO);
     }
 
-    setShowStatusSelector(true);
-    setScanning(false);
+    // Show found confirmation
     setLoading(false);
+    setShowFoundConfirmation(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    // Brief delay to show confirmation, then show status selector
+    setTimeout(() => {
+      setShowFoundConfirmation(false);
+      setShowStatusSelector(true);
+    }, 1000);
   };
 
   const handleBarcodeScan = async (barcode: string) => {
@@ -150,13 +178,13 @@ export default function SingleScanScreen() {
   };
 
   const handleStatusRequirementCheck = async (
-    status: Status, 
+    status: Status,
     requirements: { callRequired: boolean; photoRequired: boolean; reasonRequired: boolean; twoStep: boolean }
   ) => {
     if (!booking) return;
 
     const validation = await validateStatusSelection(booking.booking_id, status.status_id, booking);
-    
+
     if (!validation.allowed) {
       Alert.alert('Cannot Use This Status', validation.error || 'Status not allowed', [
         { text: 'OK' },
@@ -175,20 +203,20 @@ export default function SingleScanScreen() {
 
     if (isLeftMessageStatus(status.status_id)) {
       const leftMessageCheck = await checkLeftMessageDailyCount(status.status_id, booking.miles_ref);
-      
+
       if (leftMessageCheck.warning) {
         Alert.alert(
           '⚠️ Warning',
           leftMessageCheck.message || `You have used this status ${leftMessageCheck.count} times today. Supervisor has been notified.`,
           [
-            { 
-              text: 'Continue Anyway', 
+            {
+              text: 'Continue Anyway',
               onPress: () => proceedWithStatusFlow(status, requirements),
               style: 'default'
             },
-            { 
-              text: 'Cancel', 
-              style: 'cancel' 
+            {
+              text: 'Cancel',
+              style: 'cancel'
             },
           ]
         );
@@ -231,7 +259,7 @@ export default function SingleScanScreen() {
   const handleCallConfirmed = () => {
     setShowCallConfirmation(false);
     setCallConfirmed(true);
-    
+
     if (pendingRequirements?.photoRequired) {
       setShowPhotoCapture(true);
     } else if (pendingRequirements?.reasonRequired) {
@@ -244,7 +272,7 @@ export default function SingleScanScreen() {
   const handlePhotoCaptured = (photos: CompressedImage[]) => {
     setShowPhotoCapture(false);
     setCapturedPhotos(photos);
-    
+
     if (pendingStatus) {
       proceedWithStatusUpdate(pendingStatus, photos);
     }
@@ -252,7 +280,7 @@ export default function SingleScanScreen() {
 
   const handleReasonSubmitted = async (reason: string, piecesMissing?: number) => {
     setShowReasonInput(false);
-    
+
     if (!pendingStatus || !booking) return;
 
     setLoading(true);
@@ -283,12 +311,12 @@ export default function SingleScanScreen() {
   };
 
   const handleCODConfirmed = async (
-    collectedAmount: number, 
-    paymentType: 'cash' | 'online', 
+    collectedAmount: number,
+    paymentType: 'cash' | 'online',
     photo?: CompressedImage
   ) => {
     setShowCODConfirmation(false);
-    
+
     if (!pendingStatus || !booking) return;
 
     setLoading(true);
@@ -317,7 +345,7 @@ export default function SingleScanScreen() {
 
       await saveCODRecord(codRecord);
       await proceedWithStatusUpdate(pendingStatus);
-      
+
       Alert.alert(
         'COD Recorded',
         'Cash collection recorded. Now scan again and select "Delivered" to complete.',
@@ -331,7 +359,7 @@ export default function SingleScanScreen() {
   };
 
   const proceedWithStatusUpdate = async (
-    status: Status, 
+    status: Status,
     photos?: CompressedImage[],
     reason?: string
   ) => {
@@ -380,8 +408,10 @@ export default function SingleScanScreen() {
       setLoading(false);
 
       if (result.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         router.back();
       } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Alert.alert('Error', result.error || 'Update failed');
       }
     } catch (error) {
@@ -426,8 +456,10 @@ export default function SingleScanScreen() {
     setLoading(false);
 
     if (result.success) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', result.error || 'Update failed');
     }
   };
@@ -436,145 +468,257 @@ export default function SingleScanScreen() {
     setBooking(null);
     setSelectedStatus(null);
     setShowStatusSelector(false);
+    setShowFoundConfirmation(false);
+    setFoundBookingRef(null);
     setScanning(true);
     setPendingStatus(null);
     setPendingRequirements(null);
     setCallConfirmed(false);
     setCapturedPhotos([]);
     setCodInfo(DEFAULT_COD_INFO);
+    setManualInput('');
   };
 
   if (loading) {
-    return <LoadingIndicator fullScreen message="Processing..." />;
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <View style={styles.loadingContainer}>
+          <View style={styles.loadingContent}>
+            <View style={styles.loadingIconContainer}>
+              <Ionicons name="search" size={32} color={colors.primary} />
+            </View>
+            {foundBookingRef && (
+              <Text style={styles.loadingBookingRef}>{foundBookingRef}</Text>
+            )}
+            <Text style={styles.loadingMessage}>{loadingMessage}</Text>
+            <View style={styles.loadingDots}>
+              <View style={[styles.loadingDot, styles.loadingDotActive]} />
+              <View style={styles.loadingDot} />
+              <View style={styles.loadingDot} />
+            </View>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (showFoundConfirmation && booking) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <View style={styles.foundContainer}>
+          <View style={styles.foundContent}>
+            <View style={styles.foundIconContainer}>
+              <Ionicons name="checkmark-circle" size={64} color={colors.success} />
+            </View>
+            <Text style={styles.foundTitle}>Booking Found!</Text>
+            <Text style={styles.foundBookingRef}>{booking.miles_ref}</Text>
+            <Text style={styles.foundHawb}>{booking.hawb}</Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (
-    <View style={styles.container}>
-      {scanning && !showStatusSelector && (
-        <BarcodeScanner
-          onScan={handleBarcodeScan}
-          onManualSearch={handleManualSearch}
-        />
-      )}
-
-      {booking && showStatusSelector && (
-        <ScrollView style={styles.content}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={handleCancel}
-          >
-            <Ionicons name="arrow-back" size={24} color={colors.text} />
-            <Text style={styles.backButtonText}>Back to Scan</Text>
-          </TouchableOpacity>
-
-          <View style={styles.bookingCard}>
-            <View style={styles.bookingHeader}>
-              <Ionicons name="cube-outline" size={32} color={colors.primary} />
-              <View style={styles.bookingInfo}>
-                <Text style={styles.bookingTitle}>
-                  {booking.miles_ref} {booking.hawb}
-                </Text>
-                <Text style={[
-                  styles.bookingStatus,
-                  booking.status.status_id === DELIVERED_STATUS_ID && styles.deliveredStatus
-                ]}>
-                  {booking.status.name}
-                </Text>
-              </View>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        {scanning && !showStatusSelector && (
+          <>
+            {/* Header */}
+            <View style={styles.scanHeader}>
+              <TouchableOpacity
+                style={styles.scanBackButton}
+                onPress={() => router.back()}
+              >
+                <Ionicons name="arrow-back" size={24} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={styles.scanHeaderTitle}>Single Scan</Text>
+              <View style={styles.scanHeaderSpacer} />
             </View>
-            
-            {codInfo.hasCOD && (
-              <View style={styles.codBanner}>
-                <Ionicons name="cash" size={20} color="#92400e" />
-                <View style={styles.codBannerContent}>
-                  <Text style={styles.codBannerTitle}>COD Required</Text>
-                  {codInfo.amount && (
-                    <Text style={styles.codBannerAmount}>
-                      {codInfo.currency} {codInfo.amount.toFixed(2)}
+
+            {/* Manual Input */}
+            <View style={styles.manualInputContainer}>
+              <View style={styles.manualInputWrapper}>
+                <Ionicons name="barcode-outline" size={20} color={colors.gray400} />
+                <TextInput
+                  style={styles.manualInput}
+                  value={manualInput}
+                  onChangeText={setManualInput}
+                  placeholder="Type booking number..."
+                  placeholderTextColor={colors.gray400}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                  onSubmitEditing={() => {
+                    if (manualInput.trim()) {
+                      handleManualSearch(manualInput.trim());
+                      setManualInput('');
+                    }
+                  }}
+                />
+                {manualInput.length > 0 && (
+                  <TouchableOpacity onPress={() => setManualInput('')}>
+                    <Ionicons name="close-circle" size={20} color={colors.gray400} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.manualSearchButton,
+                  !manualInput.trim() && styles.manualSearchButtonDisabled
+                ]}
+                onPress={() => {
+                  if (manualInput.trim()) {
+                    handleManualSearch(manualInput.trim());
+                    setManualInput('');
+                  }
+                }}
+                disabled={!manualInput.trim()}
+              >
+                <Ionicons name="search" size={22} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Scanner - Takes remaining space */}
+            <View style={styles.scannerWrapper}>
+              <BarcodeScanner
+                onScan={handleBarcodeScan}
+                compact={true}
+              />
+            </View>
+          </>
+        )}
+
+        {booking && showStatusSelector && (
+          <View style={styles.contentContainer}>
+            {/* Header */}
+            <View style={styles.header}>
+              <TouchableOpacity
+                style={styles.headerBackButton}
+                onPress={handleCancel}
+              >
+                <Ionicons name="arrow-back" size={24} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Select Status</Text>
+            </View>
+
+            <ScrollView
+              style={styles.scrollContent}
+              contentContainerStyle={styles.scrollContentContainer}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Booking Card */}
+              <View style={styles.bookingCard}>
+                <View style={styles.bookingHeader}>
+                  <View style={styles.bookingIcon}>
+                    <Ionicons name="cube" size={24} color={colors.primary} />
+                  </View>
+                  <View style={styles.bookingInfo}>
+                    <Text style={styles.bookingRef}>{booking.miles_ref}</Text>
+                    <Text style={styles.bookingHawb}>{booking.hawb}</Text>
+                  </View>
+                  <View style={[
+                    styles.statusBadge,
+                    booking.status.status_id === DELIVERED_STATUS_ID && styles.statusBadgeDelivered
+                  ]}>
+                    <Text style={[
+                      styles.statusBadgeText,
+                      booking.status.status_id === DELIVERED_STATUS_ID && styles.statusBadgeTextDelivered
+                    ]}>
+                      {booking.status.name}
                     </Text>
-                  )}
+                  </View>
                 </View>
+
+                {codInfo.hasCOD && (
+                  <View style={styles.codBanner}>
+                    <Ionicons name="cash" size={20} color="#92400e" />
+                    <View style={styles.codBannerContent}>
+                      <Text style={styles.codBannerTitle}>COD Required</Text>
+                      {codInfo.amount && (
+                        <Text style={styles.codBannerAmount}>
+                          {codInfo.currency} {codInfo.amount.toFixed(2)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                {booking.special_instruction && (
+                  <View style={styles.specialInstructionBox}>
+                    <Ionicons name="information-circle" size={16} color={colors.warning} />
+                    <Text style={styles.specialInstructionText} numberOfLines={3}>
+                      {booking.special_instruction}
+                    </Text>
+                  </View>
+                )}
               </View>
-            )}
 
-            {booking.special_instruction && (
-              <View style={styles.specialInstructionBox}>
-                <Ionicons name="information-circle" size={16} color={colors.warning} />
-                <Text style={styles.specialInstructionText} numberOfLines={3}>
-                  {booking.special_instruction}
-                </Text>
+              {/* Status Section */}
+              <View style={styles.statusSection}>
+                <Text style={styles.sectionTitle}>Select Status</Text>
+                <StatusSelector
+                  statuses={statuses}
+                  driverTypes={driverTypes}
+                  currentStatusId={booking.status.status_id}
+                  onSelect={handleStatusSelect}
+                  onStatusRequirementCheck={handleStatusRequirementCheck}
+                />
               </View>
-            )}
+            </ScrollView>
           </View>
+        )}
 
-          {driverTypes.length > 0 && (
-            <View style={styles.driverTypeInfo}>
-              <Ionicons name="person-outline" size={16} color={colors.textLight} />
-              <Text style={styles.driverTypeText}>
-                Showing statuses for: {driverTypes.map(t => t.toUpperCase()).join(', ')}
-              </Text>
-            </View>
-          )}
+        <CallConfirmationModal
+          visible={showCallConfirmation}
+          statusName={pendingStatus?.name || ''}
+          onConfirm={handleCallConfirmed}
+          onCancel={() => {
+            setShowCallConfirmation(false);
+            setPendingStatus(null);
+            setPendingRequirements(null);
+          }}
+        />
 
-          <View style={styles.statusSection}>
-            <Text style={styles.sectionTitle}>Select Status</Text>
-            <StatusSelector
-              statuses={statuses}
-              driverTypes={driverTypes}
-              currentStatusId={booking.status.status_id}
-              onSelect={handleStatusSelect}
-              onStatusRequirementCheck={handleStatusRequirementCheck}
-            />
-          </View>
-        </ScrollView>
-      )}
+        <ReasonInputModal
+          visible={showReasonInput}
+          statusId={pendingStatus?.status_id || 0}
+          statusName={pendingStatus?.name || ''}
+          onSubmit={handleReasonSubmitted}
+          onCancel={() => {
+            setShowReasonInput(false);
+            setPendingStatus(null);
+            setPendingRequirements(null);
+          }}
+        />
 
-      <CallConfirmationModal
-        visible={showCallConfirmation}
-        statusName={pendingStatus?.name || ''}
-        onConfirm={handleCallConfirmed}
-        onCancel={() => {
-          setShowCallConfirmation(false);
-          setPendingStatus(null);
-          setPendingRequirements(null);
-        }}
-      />
+        <CODConfirmationModal
+          visible={showCODConfirmation}
+          codInfo={codInfo}
+          onConfirm={handleCODConfirmed}
+          onCancel={() => {
+            setShowCODConfirmation(false);
+            setPendingStatus(null);
+            setPendingRequirements(null);
+          }}
+        />
 
-      <ReasonInputModal
-        visible={showReasonInput}
-        statusId={pendingStatus?.status_id || 0}
-        statusName={pendingStatus?.name || ''}
-        onSubmit={handleReasonSubmitted}
-        onCancel={() => {
-          setShowReasonInput(false);
-          setPendingStatus(null);
-          setPendingRequirements(null);
-        }}
-      />
-
-      <CODConfirmationModal
-        visible={showCODConfirmation}
-        codInfo={codInfo}
-        onConfirm={handleCODConfirmed}
-        onCancel={() => {
-          setShowCODConfirmation(false);
-          setPendingStatus(null);
-          setPendingRequirements(null);
-        }}
-      />
-
-      <StatusPhotoCapture
-        visible={showPhotoCapture}
-        statusId={pendingStatus?.status_id || 0}
-        statusName={pendingStatus?.name || ''}
-        onComplete={handlePhotoCaptured}
-        onCancel={() => {
-          setShowPhotoCapture(false);
-          setPendingStatus(null);
-          setPendingRequirements(null);
-        }}
-      />
-    </View>
+        <StatusPhotoCapture
+          visible={showPhotoCapture}
+          statusId={pendingStatus?.status_id || 0}
+          statusName={pendingStatus?.name || ''}
+          onComplete={handlePhotoCaptured}
+          onCancel={() => {
+            setShowPhotoCapture(false);
+            setPendingStatus(null);
+            setPendingRequirements(null);
+          }}
+        />
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -583,26 +727,208 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  content: {
+  keyboardView: {
     flex: 1,
-    padding: layouts.spacing.lg,
   },
-  backButton: {
+  contentContainer: {
+    flex: 1,
+  },
+
+  // Scanning Screen Header
+  scanHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: layouts.spacing.md,
-    gap: layouts.spacing.sm,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray200,
+    backgroundColor: colors.background,
   },
-  backButtonText: {
+  scanBackButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.gray100,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scanHeaderTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginLeft: 12,
+  },
+  scanHeaderSpacer: {
+    width: 40,
+  },
+
+  // Manual Input (matches bulk-scan)
+  manualInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 10,
+    backgroundColor: colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray200,
+  },
+  manualInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.gray100,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+  },
+  manualInput: {
+    flex: 1,
     fontSize: 16,
     color: colors.text,
-    fontWeight: '600',
+    fontWeight: '500',
   },
+  manualSearchButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  manualSearchButtonDisabled: {
+    backgroundColor: colors.gray300,
+  },
+
+  // Scanner wrapper - takes remaining space
+  scannerWrapper: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+
+  // Loading Screen
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  loadingContent: {
+    alignItems: 'center',
+    padding: 32,
+  },
+  loadingIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: `${colors.primary}15`,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  loadingBookingRef: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+    letterSpacing: 1,
+  },
+  loadingMessage: {
+    fontSize: 16,
+    color: colors.textLight,
+    marginBottom: 20,
+  },
+  loadingDots: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  loadingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.gray300,
+  },
+  loadingDotActive: {
+    backgroundColor: colors.primary,
+  },
+
+  // Found Confirmation Screen
+  foundContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  foundContent: {
+    alignItems: 'center',
+    padding: 32,
+  },
+  foundIconContainer: {
+    marginBottom: 20,
+  },
+  foundTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.success,
+    marginBottom: 16,
+  },
+  foundBookingRef: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: 1,
+  },
+  foundHawb: {
+    fontSize: 16,
+    color: colors.textLight,
+    marginTop: 4,
+  },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray200,
+    backgroundColor: colors.background,
+  },
+  headerBackButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.gray100,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginLeft: 12,
+  },
+
+  // Scroll Content
+  scrollContent: {
+    flex: 1,
+  },
+  scrollContentContainer: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+
+  // Booking Card
   bookingCard: {
     backgroundColor: colors.card,
-    borderRadius: layouts.borderRadius.lg,
-    padding: layouts.spacing.lg,
-    marginBottom: layouts.spacing.lg,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
     borderWidth: 1,
     borderColor: colors.gray200,
   },
@@ -610,34 +936,57 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  bookingIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: `${colors.primary}15`,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   bookingInfo: {
     flex: 1,
-    marginLeft: layouts.spacing.md,
+    marginLeft: 12,
   },
-  bookingTitle: {
+  bookingRef: {
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: layouts.spacing.xs,
   },
-  bookingStatus: {
+  bookingHawb: {
     fontSize: 14,
     color: colors.textLight,
+    marginTop: 2,
   },
-  deliveredStatus: {
+  statusBadge: {
+    backgroundColor: colors.gray100,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  statusBadgeDelivered: {
+    backgroundColor: `${colors.success}15`,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textLight,
+  },
+  statusBadgeTextDelivered: {
     color: colors.success,
-    fontWeight: '700',
   },
+
+  // COD Banner
   codBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fef3c7',
-    padding: layouts.spacing.md,
-    borderRadius: layouts.borderRadius.md,
-    marginTop: layouts.spacing.md,
-    gap: layouts.spacing.sm,
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 12,
+    gap: 10,
     borderWidth: 1,
-    borderColor: '#f59e0b',
+    borderColor: '#fbbf24',
   },
   codBannerContent: {
     flex: 1,
@@ -652,40 +1001,32 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#92400e',
   },
+
+  // Special Instruction
   specialInstructionBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     backgroundColor: colors.gray100,
-    padding: layouts.spacing.sm,
-    borderRadius: layouts.borderRadius.md,
-    marginTop: layouts.spacing.md,
-    gap: layouts.spacing.sm,
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 12,
+    gap: 8,
   },
   specialInstructionText: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textLight,
+    lineHeight: 18,
+  },
+
+  // Status Section
+  statusSection: {
+    marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: layouts.spacing.sm,
-  },
-  driverTypeInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.gray100,
-    padding: layouts.spacing.sm,
-    borderRadius: layouts.borderRadius.md,
-    marginBottom: layouts.spacing.md,
-    gap: layouts.spacing.xs,
-  },
-  driverTypeText: {
-    fontSize: 12,
-    color: colors.textLight,
-  },
-  statusSection: {
-    marginBottom: layouts.spacing.lg,
+    marginBottom: 12,
   },
 });
