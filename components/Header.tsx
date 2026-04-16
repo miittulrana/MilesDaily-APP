@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useSegments } from 'expo-router';
 import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../constants/Colors';
@@ -10,14 +10,21 @@ type HeaderProps = {
   title?: string;
   back?: boolean;
   options?: any;
+  route?: any;
 };
 
-export default function Header({ title, back, options }: HeaderProps) {
+export default function Header({ title, back, options, route }: HeaderProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const segments = useSegments();
+
+  // Check if we're on the dashboard index (not a sub-module)
+  // Dashboard is when segments is ['(dashboard)'] or route name is 'index'
+  const isDashboard = route?.name === 'index' || (segments.length === 1 && segments[0] === '(dashboard)');
+  const showBack = back || !isDashboard;
 
   const handleBack = () => {
-    if (back) {
+    if (showBack) {
       router.back();
     } else {
       router.replace('/(dashboard)');
@@ -30,8 +37,8 @@ export default function Header({ title, back, options }: HeaderProps) {
       'Are you sure you want to logout?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Logout', 
+        {
+          text: 'Logout',
           style: 'destructive',
           onPress: async () => {
             await signOut();
@@ -44,31 +51,35 @@ export default function Header({ title, back, options }: HeaderProps) {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        {back ? (
+        {showBack ? (
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </TouchableOpacity>
         ) : (
           <View style={styles.logoContainer}>
-            <Image 
-              source={require('../assets/logo.png')} 
+            <Image
+              source={require('../assets/miles.png')}
               style={styles.logo}
               resizeMode="contain"
             />
           </View>
         )}
-        
+
         <View style={styles.titleContainer}>
           <Text style={styles.title}>
             {title || options?.title || ''}
           </Text>
         </View>
-        
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <View style={styles.logoutButtonInner}>
-            <Ionicons name="log-out-outline" size={22} color={colors.primary} />
-          </View>
-        </TouchableOpacity>
+
+        {!showBack ? (
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <View style={styles.logoutButtonInner}>
+              <Ionicons name="log-out-outline" size={22} color={colors.primary} />
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.logoutButtonPlaceholder} />
+        )}
       </View>
     </View>
   );
@@ -106,13 +117,13 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   logoContainer: {
-    width: 44,
+    width: 100,
     height: 44,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   logo: {
-    height: 50,
+    height: 20,
     width: 100,
   },
   titleContainer: {
@@ -145,5 +156,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+  },
+  logoutButtonPlaceholder: {
+    width: 44,
+    height: 44,
   },
 });

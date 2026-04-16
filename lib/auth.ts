@@ -50,7 +50,7 @@ export const getDriverInfo = async (): Promise<DriverInfo | null> => {
         .from('drivers')
         .select('id, email, first_name, last_name, role, driver_types, is_active, bizhandle_staff_id')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
     });
 
     if (error) {
@@ -67,6 +67,7 @@ export const getDriverInfo = async (): Promise<DriverInfo | null> => {
 
 export const getAssignedVehicle = async (driverId: string) => {
   try {
+    // First: Check vehicle_assignments table for active assignment
     const { data: assignment, error: assignmentError } = await supabaseQuery<{ vehicle_id: string }>(
       async (client) => {
         return await client
@@ -76,7 +77,7 @@ export const getAssignedVehicle = async (driverId: string) => {
           .is('unassigned_at', null)
           .order('assigned_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
       }
     );
 
@@ -87,7 +88,7 @@ export const getAssignedVehicle = async (driverId: string) => {
             .from('vehicles')
             .select('*')
             .eq('id', assignment.vehicle_id)
-            .single();
+            .maybeSingle();
         }
       );
 
@@ -96,6 +97,7 @@ export const getAssignedVehicle = async (driverId: string) => {
       }
     }
 
+    // Fallback: Check vehicles table directly (legacy assignment method)
     const { data: vehicle, error: vehicleError } = await supabaseQuery<any>(
       async (client) => {
         return await client
@@ -103,7 +105,7 @@ export const getAssignedVehicle = async (driverId: string) => {
           .select('*')
           .eq('driver_id', driverId)
           .eq('status', 'assigned')
-          .single();
+          .maybeSingle();
       }
     );
 

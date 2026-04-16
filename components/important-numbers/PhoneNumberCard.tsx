@@ -1,4 +1,4 @@
-import { StyleSheet, Text, TouchableOpacity, View, Linking, Alert } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View, Linking, Alert, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
@@ -11,17 +11,19 @@ interface PhoneNumberCardProps {
 export default function PhoneNumberCard({ phoneNumber }: PhoneNumberCardProps) {
   const handleCall = async () => {
     try {
-      const phoneUrl = `tel:${phoneNumber.phone_number}`;
-      const canOpen = await Linking.canOpenURL(phoneUrl);
-      
-      if (canOpen) {
-        await Linking.openURL(phoneUrl);
-      } else {
-        Alert.alert('Error', 'Unable to make phone call');
-      }
+      // Clean phone number - remove spaces, dashes, parentheses
+      const cleanNumber = phoneNumber.phone_number.replace(/[\s\-\(\)]/g, '');
+      const phoneUrl = `tel:${cleanNumber}`;
+
+      // Just try to open - canOpenURL is unreliable for tel: links on Android
+      await Linking.openURL(phoneUrl);
     } catch (error) {
       console.error('Error making phone call:', error);
-      Alert.alert('Error', 'Failed to make phone call');
+      Alert.alert(
+        'Cannot Make Call',
+        `Unable to call ${phoneNumber.phone_number}. You can copy the number and dial manually.`,
+        [{ text: 'OK' }]
+      );
     }
   };
 
@@ -35,7 +37,7 @@ export default function PhoneNumberCard({ phoneNumber }: PhoneNumberCardProps) {
         <View style={styles.iconContainer}>
           <Ionicons name="call" size={24} color={colors.primary} />
         </View>
-        
+
         <View style={styles.textContainer}>
           <Text style={styles.name}>{phoneNumber.name}</Text>
           <Text style={styles.phoneNumber}>{phoneNumber.phone_number}</Text>
@@ -43,7 +45,7 @@ export default function PhoneNumberCard({ phoneNumber }: PhoneNumberCardProps) {
             <Text style={styles.description}>{phoneNumber.description}</Text>
           )}
         </View>
-        
+
         <View style={styles.callButton}>
           <Ionicons name="chevron-forward" size={20} color={colors.gray400} />
         </View>

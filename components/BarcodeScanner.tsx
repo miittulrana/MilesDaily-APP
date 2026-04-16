@@ -32,10 +32,6 @@ const CONFIG = {
   // Minimum time spread required - barcode must be read over at least this duration (ms)
   // This prevents instant confirmation when camera reads 3 times in 50ms
   MIN_TIME_SPREAD: 400,
-  // Minimum barcode length
-  MIN_LENGTH: 6,
-  // Maximum barcode length
-  MAX_LENGTH: 20,
   // Time to show confirmation before processing (ms)
   CONFIRMATION_DISPLAY_TIME: 600,
   // Buffer cleanup interval (ms)
@@ -44,30 +40,27 @@ const CONFIG = {
   BUFFER_STALE_THRESHOLD: 2000,
 };
 
-// Validate barcode format
+// STRICT barcode validation - ONLY accepts:
+// 1. Miles ref: exactly 12 digits starting with 910000
+// 2. HAWB: exactly 9 digits starting with 8
+// Everything else is IGNORED - no random text, no partial reads
 const isValidBarcodeFormat = (code: string): boolean => {
   if (!code || typeof code !== 'string') return false;
 
   const trimmed = code.trim();
 
-  // Length check
-  if (trimmed.length < CONFIG.MIN_LENGTH || trimmed.length > CONFIG.MAX_LENGTH) {
-    return false;
+  // Miles ref: exactly 12 digits, starts with 910000
+  if (/^910000\d{6}$/.test(trimmed)) {
+    return true;
   }
 
-  // Must be alphanumeric (allows for HAWB codes)
-  // Rejects special characters, control characters, garbage
-  if (!/^[A-Za-z0-9\-]+$/.test(trimmed)) {
-    return false;
+  // HAWB: exactly 9 digits, starts with 8
+  if (/^8\d{8}$/.test(trimmed)) {
+    return true;
   }
 
-  // Reject if too many consecutive same characters (likely misread)
-  // Allow up to 5 consecutive (910000 pattern is common)
-  if (/(.)\1{5,}/.test(trimmed)) {
-    return false;
-  }
-
-  return true;
+  // Reject EVERYTHING else
+  return false;
 };
 
 // Normalize barcode (trim, uppercase)
@@ -102,22 +95,30 @@ export default function BarcodeScanner({
   const bufferCleanupRef = useRef<NodeJS.Timeout | null>(null);
   const confirmationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Track if parent has taken over processing via external lock
+  // When true, skip cooldown on unlock since parent already handled the delay
+  const parentHandledProcessingRef = useRef(false);
+
   // Effect to handle external lock state
   useEffect(() => {
     if (locked) {
-      // When locked externally, set to processing state
-      if (scannerState === 'ready' || scannerState === 'scanning') {
+      // Parent is taking over processing - mark it so we skip cooldown later
+      // This applies regardless of current state (ready, scanning, confirming, or processing)
+      parentHandledProcessingRef.current = true;
+
+      // Ensure we show processing state
+      if (scannerState !== 'processing') {
         setScannerState('processing');
       }
     } else {
-      // When unlocked, if we were in processing due to lock, go to cooldown or ready
-      if (scannerState === 'processing' && !isProcessingRef.current) {
-        if (cooldownMode) {
-          startCooldown();
-        } else {
-          resetScanner();
-        }
+      // Parent unlocked - check if parent handled the processing
+      if (parentHandledProcessingRef.current) {
+        // Parent handled it, skip cooldown and reset immediately
+        parentHandledProcessingRef.current = false;
+        resetScanner();
       }
+      // If parentHandledProcessingRef is false, scanner is managing its own flow
+      // (e.g., internal processing without external lock) - let it continue
     }
   }, [locked]);
 
@@ -152,13 +153,19 @@ export default function BarcodeScanner({
   const resetScanner = useCallback(() => {
     scanBufferRef.current.clear();
     isProcessingRef.current = false;
+    parentHandledProcessingRef.current = false;
     setScannerState('ready');
     setConfirmedCode(null);
     setScanProgress(0);
   }, []);
 
-  // Start cooldown period (for bulk mode)
+  // Start cooldown period (for bulk mode without external lock)
   const startCooldown = useCallback(() => {
+    // If parent is handling processing, don't start cooldown
+    if (parentHandledProcessingRef.current) {
+      return;
+    }
+
     if (!cooldownMode) {
       resetScanner();
       return;
@@ -199,6 +206,10 @@ export default function BarcodeScanner({
     confirmationTimerRef.current = setTimeout(async () => {
       setScannerState('processing');
 
+      // Mark that we're about to call onScan - parent may take over
+      // We'll check after onScan if parent locked us
+      const wasLockedBefore = locked;
+
       // Await the onScan callback if it returns a promise
       try {
         await onScan(code);
@@ -206,11 +217,16 @@ export default function BarcodeScanner({
         console.error('Error in onScan callback:', error);
       }
 
-      // Only start cooldown if not externally locked
-      // If locked, the parent will unlock when ready
-      if (!locked) {
-        startCooldown();
-      }
+      // After onScan completes, check if parent took over
+      // Parent sets locked=true synchronously in their handler, so if parentHandledProcessingRef
+      // is true OR if we're currently locked, parent is handling it
+      // Use a small delay to let React state propagate before deciding
+      setTimeout(() => {
+        if (!parentHandledProcessingRef.current && !locked) {
+          startCooldown();
+        }
+        // If parent is handling, they will unlock and useEffect will reset us
+      }, 50);
     }, CONFIG.CONFIRMATION_DISPLAY_TIME);
   }, [onScan, startCooldown, locked]);
 
@@ -327,10 +343,13 @@ export default function BarcodeScanner({
       console.error('Error in manual search callback:', error);
     }
 
-    // Only start cooldown if not externally locked
-    if (!locked) {
-      startCooldown();
-    }
+    // After callback completes, check if parent took over
+    // Use small delay to let React state propagate
+    setTimeout(() => {
+      if (!parentHandledProcessingRef.current && !locked) {
+        startCooldown();
+      }
+    }, 50);
   }, [manualInput, scannerState, onManualSearch, onScan, startCooldown, locked]);
 
   // Permission handling
@@ -430,7 +449,7 @@ export default function BarcodeScanner({
         style={styles.camera}
         facing="back"
         enableTorch={torchOn}
-        onBarcodeScanned={handleBarCodeScanned}
+        onBarcodeScanned={locked ? undefined : handleBarCodeScanned}
         barcodeScannerSettings={{
           barcodeTypes: ['qr', 'code128', 'code39', 'ean13', 'ean8', 'codabar', 'itf14'],
         }}

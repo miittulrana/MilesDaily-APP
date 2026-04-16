@@ -27,7 +27,7 @@ export default function FuelRecordsScreen() {
         setLoading(true);
         const driverData = await getDriverInfo();
         setDriver(driverData);
-        
+
         if (driverData?.id) {
           const vehicleData = await getAssignedVehicle(driverData.id);
           setVehicle(vehicleData);
@@ -41,13 +41,13 @@ export default function FuelRecordsScreen() {
 
     loadDriver();
   }, []);
-  
+
   const fetchRecords = useCallback(async () => {
     if (driver?.id && vehicle?.id) {
       try {
         setRecordsLoading(true);
         setError(null);
-        
+
         const data = await getAllFuelRecords(driver.id, vehicle.id);
         setRecords(data);
       } catch (err) {
@@ -64,7 +64,7 @@ export default function FuelRecordsScreen() {
 
     let isSubscribed = true;
     const channelName = `fuel-records-${vehicle.id}`;
-    
+
     const existingChannels = supabase.getChannels();
     existingChannels.forEach(channel => {
       if (channel.topic === `realtime:${channelName}`) {
@@ -84,7 +84,7 @@ export default function FuelRecordsScreen() {
         },
         (payload) => {
           if (!isSubscribed) return;
-          
+
           console.log('Fuel record changed:', payload);
           if (driver?.id && vehicle?.id) {
             getAllFuelRecords(driver.id, vehicle.id).then(data => {
@@ -133,7 +133,16 @@ export default function FuelRecordsScreen() {
   if (!vehicle) {
     return (
       <View style={[styles.container, styles.centerContent]}>
-        <Text style={styles.errorText}>No vehicle assigned to your account</Text>
+        <View style={styles.noVehicleCard}>
+          <View style={styles.noVehicleIconContainer}>
+            <Ionicons name="car-outline" size={48} color={colors.gray400} />
+          </View>
+          <Text style={styles.noVehicleTitle}>No Vehicle Assigned</Text>
+          <Text style={styles.noVehicleMessage}>
+            No vehicle is currently assigned to you.{'\n'}
+            Kindly contact the Planning & Distribution Team.
+          </Text>
+        </View>
       </View>
     );
   }
@@ -170,8 +179,8 @@ export default function FuelRecordsScreen() {
               data={records}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
-                <FuelRecordCard 
-                  record={item} 
+                <FuelRecordCard
+                  record={item}
                   showManualTag={true}
                 />
               )}
@@ -199,6 +208,41 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.error,
     textAlign: 'center',
+  },
+  noVehicleCard: {
+    backgroundColor: colors.card,
+    borderRadius: layouts.borderRadius.xl,
+    padding: layouts.spacing.xxl,
+    alignItems: 'center',
+    marginHorizontal: layouts.spacing.lg,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+  },
+  noVehicleIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.gray100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: layouts.spacing.lg,
+  },
+  noVehicleTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: layouts.spacing.sm,
+  },
+  noVehicleMessage: {
+    fontSize: 15,
+    color: colors.textLight,
+    textAlign: 'center',
+    lineHeight: 22,
   },
   header: {
     flexDirection: 'row',

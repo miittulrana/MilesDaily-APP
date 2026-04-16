@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import LoadingIndicator from '../../../components/LoadingIndicator';
 import PhoneNumberList from '../../../components/important-numbers/PhoneNumberList';
 import { colors } from '../../../constants/Colors';
@@ -44,33 +44,17 @@ export default function ImportantNumbersScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
-          />
-        }
-      >
-        <View style={styles.header}>
-          <Text style={styles.title}>Important Numbers</Text>
-          <Text style={styles.subtitle}>
-            Emergency contacts and important phone numbers
-          </Text>
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
         </View>
+      )}
 
-        {error && (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        )}
-
-        <PhoneNumberList phoneNumbers={phoneNumbers} />
-      </ScrollView>
+      <PhoneNumberList
+        phoneNumbers={phoneNumbers}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+      />
     </View>
   );
 }
@@ -79,26 +63,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
     padding: layouts.spacing.lg,
-  },
-  header: {
-    marginBottom: layouts.spacing.xl,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: layouts.spacing.xs,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: colors.textLight,
-    lineHeight: 22,
   },
   errorContainer: {
     backgroundColor: colors.error + '10',

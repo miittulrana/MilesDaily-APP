@@ -70,7 +70,7 @@ export default function LoginScreen() {
           <View style={styles.logoContainer}>
             <View style={styles.logoWrapper}>
               <Image
-                source={require('../../assets/logo.png')}
+                source={require('../../assets/miles.png')}
                 style={styles.logo}
                 resizeMode="contain"
               />
@@ -187,7 +187,8 @@ const styles = StyleSheet.create({
   logoWrapper: {
     backgroundColor: colors.background,
     borderRadius: layouts.borderRadius.xxl,
-    padding: layouts.spacing.lg,
+    paddingVertical: layouts.spacing.xl,
+    paddingHorizontal: layouts.spacing.xxl,
     shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.15,
@@ -195,8 +196,8 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   logo: {
-    width: 320,
-    height: 140,
+    width: 250,
+    height: 50,
   },
   formContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
