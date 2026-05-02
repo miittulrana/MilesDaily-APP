@@ -8,7 +8,7 @@ import { fetchStatusValidations, clearValidationsCache } from './validations';
 import { fetchUIContent, clearUIContentCache } from './uiContent';
 import { fetchModuleAccess, clearModuleAccessCache } from './moduleAccess';
 
-const API_BASE_URL = 'https://fleet.milesxp.com/api/driver-config';
+const API_BASE_URL = 'https://fleet-staging.milesxp.com/api/driver-config';
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 
 let isInitialized = false;

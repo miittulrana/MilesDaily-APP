@@ -2,7 +2,7 @@ import { StatusPermissions } from './types';
 import { saveStatusPermissions, loadStatusPermissions } from './storage';
 import { DEFAULT_CONFIG } from '../../constants/defaultConfig';
 
-const API_BASE_URL = 'https://fleet.milesxp.com/api/driver-config';
+const API_BASE_URL = 'https://fleet-staging.milesxp.com/api/driver-config';
 
 let cachedPermissions: StatusPermissions | null = null;
 

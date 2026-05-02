@@ -11,9 +11,9 @@ import { useTempAssignments } from '../../lib/hooks/useTempAssignments';
 import { getAllowedModulesForDriver, shouldShowVehicleSection } from '../../lib/remoteConfig/moduleAccess';
 import { DriverInfo } from '../../utils/types';
 
-// All possible modules in display order — add new ones here freely
 const ALL_MODULE_DEFINITIONS = [
   { key: 'bookings', title: 'Bookings', iconName: 'cube-outline' },
+  { key: 'pickups', title: 'Pickups', iconName: 'arrow-up-circle-outline' },
   { key: 'runsheets', title: 'Run-Sheets', iconName: 'list-outline' },
   { key: 'documents', title: 'Documents', iconName: 'document-text-outline' },
   { key: 'fuel', title: 'Fuel', iconName: 'water' },
@@ -47,19 +47,30 @@ export default function DashboardScreen() {
     try {
       if (showLoading) setLoading(true);
 
-      const driverData = await getDriverInfo();
-      setDriver(driverData);
+      // TEMP: force clear stale module access cache
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      await AsyncStorage.removeItem('module_access_config');
+      await AsyncStorage.removeItem('remote_config_module_access');
+      await AsyncStorage.removeItem('driver_config_module_access');
+      // also try wildcard patterns your config system might use
+      const allKeys = await AsyncStorage.getAllKeys();
+      const configKeys = allKeys.filter(k => k.includes('module') || k.includes('config') || k.includes('remote'));
+      console.log('=== CLEARING CONFIG KEYS ===', configKeys);
+      if (configKeys.length > 0) await AsyncStorage.multiRemove(configKeys);
 
-      // Resolve module access and vehicle visibility from remote config
+      const driverData = await getDriverInfo(); setDriver(driverData);
+
       const driverTypes = driverData?.driver_types || [];
       const [modules, vehicleVisible] = await Promise.all([
         getAllowedModulesForDriver(driverTypes),
         shouldShowVehicleSection(driverTypes),
       ]);
-      setAllowedModules(modules);
-      setShowVehicle(vehicleVisible);
+      console.log('=== MODULE ACCESS DEBUG ===');
+      console.log('Driver types:', driverTypes);
+      console.log('Allowed modules:', modules);
+      console.log('=== END MODULE DEBUG ===');
+      setAllowedModules(modules); setShowVehicle(vehicleVisible);
 
-      // Only fetch vehicle if this driver type needs it
       if (driverData?.id && vehicleVisible) {
         const vehicleData = await getAssignedVehicle(driverData.id);
         setVehicle(vehicleData);
@@ -132,17 +143,16 @@ export default function DashboardScreen() {
       router.push('/(dashboard)/important-numbers');
     } else if (module === 'bookings') {
       router.push('/(dashboard)/bookings');
+    } else if (module === 'pickups') {
+      router.push('/(dashboard)/pickups');
     }
   };
 
-  // Filter modules based on allowed list
-  // '__ALL__' sentinel means no restriction — show everything
   const isAllAccess = allowedModules.includes('__ALL__');
   const visibleModules = ALL_MODULE_DEFINITIONS.filter(
     (m) => isAllAccess || allowedModules.includes(m.key)
   );
 
-  // Pair into rows of 2 (same layout as original)
   const moduleRows: (typeof ALL_MODULE_DEFINITIONS)[] = [];
   for (let i = 0; i < visibleModules.length; i += 2) {
     moduleRows.push(visibleModules.slice(i, i + 2));
@@ -176,7 +186,6 @@ export default function DashboardScreen() {
           )}
         </View>
 
-        {/* Only show vehicle section if config says this driver type needs it */}
         {showVehicle && (
           vehicle ? (
             <View style={styles.vehicleInfoCard}>
@@ -209,7 +218,6 @@ export default function DashboardScreen() {
                 onPress={() => navigateToModule(mod.key)}
               />
             ))}
-            {/* Odd module — placeholder to keep 2-col grid alignment */}
             {row.length === 1 && <View style={styles.moduleCardPlaceholder} />}
           </View>
         ))}

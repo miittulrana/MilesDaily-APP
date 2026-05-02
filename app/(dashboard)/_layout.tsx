@@ -240,6 +240,20 @@ export default function DashboardLayout() {
         }}
       />
       <Stack.Screen
+        name="pickups/index"
+        options={{
+          headerShown: true,
+          title: 'Pickups',
+        }}
+      />
+      <Stack.Screen
+        name="pickups/history"
+        options={{
+          headerShown: true,
+          title: 'Pickup History',
+        }}
+      />
+      <Stack.Screen
         name="temp-assignment-documents"
         options={{
           headerShown: false,

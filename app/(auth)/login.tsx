@@ -8,6 +8,7 @@ import LoadingIndicator from '../../components/LoadingIndicator';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
 import { signIn } from '../../lib/auth';
+import { config } from '../../constants/Config';
 import { loginToBizhandle } from '../../lib/bizhandleAuth';
 
 export default function LoginScreen() {
@@ -27,8 +28,16 @@ export default function LoginScreen() {
       setLoading(true);
       setError(null);
 
-      const result = await signIn(email, password);
+      console.log('=== LOGIN DEBUG ===');
+      console.log('Email:', JSON.stringify(email));
+      console.log('Email length:', email.length);
+      console.log('Password:', JSON.stringify(password));
+      console.log('Password length:', password.length);
+      console.log('Supabase URL:', config.api.supabaseUrl);
+      console.log('Anon key first 20:', config.api.supabaseAnonKey.substring(0, 20));
+      console.log('=== END DEBUG ===');
 
+      const result = await signIn(email, password);
       if (result.error) {
         setError(result.error.message);
         setLoading(false);

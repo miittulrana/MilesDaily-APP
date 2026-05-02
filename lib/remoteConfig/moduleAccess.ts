@@ -1,7 +1,7 @@
 import { ModuleAccessConfig } from './types';
 import { saveModuleAccess, loadModuleAccess } from './storage';
 
-const API_BASE_URL = 'https://fleet.milesxp.com/api/driver-config';
+const API_BASE_URL = 'https://fleet-staging.milesxp.com/api/driver-config';
 
 const DEFAULT_MODULE_ACCESS: ModuleAccessConfig = {
     access: {},
