@@ -2,6 +2,15 @@ import { supabase, supabaseQuery, withRetry } from './supabase';
 import { supabaseBizhandle, bizhandleRpcWithRetry } from './bizhandleClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
+export interface PickupItem {
+    description: string;
+    pieces: number;
+    weight: number;
+    length: number;
+    height: number;
+    width: number;
+}
+
 export interface DriverPickupAssignment {
     id: string;
     booking_id: number;
@@ -16,44 +25,115 @@ export interface DriverPickupAssignment {
     transfer_requested_at: string | null;
     completed_at: string | null;
     created_at: string;
-    // Enriched from BizHandle
-    shipper_company?: string;
-    shipper_locality?: string;
-    shipper_contact_no?: string;
-    shipper_address_1?: string;
-    consignee_company?: string;
-    consignee_locality?: string;
-    consignee_country?: string;
-    collection_time_from?: string;
-    collection_time_to?: string;
-    service_level?: string;
+    // Details stored at assignment time (from MXP)
+    service_level_id: number | null;
+    service_level: string;
+    is_export: boolean;
+    collection_date: string | null;
+    collection_time_from: string | null;
+    collection_time_to: string | null;
+    shipper_company: string;
+    shipper_contact_name: string;
+    shipper_address_1: string;
+    shipper_address_2: string;
+    shipper_locality: string;
+    shipper_post_code: string;
+    shipper_country: string;
+    shipper_contact_no: string;
+    shipper_email: string;
+    consignee_company: string;
+    consignee_contact_name: string;
+    consignee_address_1: string;
+    consignee_address_2: string;
+    consignee_locality: string;
+    consignee_post_code: string;
+    consignee_country: string;
+    consignee_contact_no: string;
+    total_pieces: number;
+    total_weight: number;
+    items: PickupItem[];
+    special_instruction: string;
+    // Legacy fields kept for backward compat (populated from stored columns)
     current_status_id?: number;
     current_status_name?: string;
-    total_pieces?: number;
-    total_weight?: number;
 }
 
-// Fetch active assignments for a driver on a given date
+const ASSIGNMENT_SELECT = `
+    id, booking_id, miles_ref, driver_id, assigned_by_email,
+    pickup_date, message, is_urgent, status, transfer_reason,
+    transfer_requested_at, completed_at, created_at,
+    service_level_id, service_level, is_export,
+    collection_date, collection_time_from, collection_time_to,
+    shipper_company, shipper_contact_name, shipper_address_1, shipper_address_2,
+    shipper_locality, shipper_post_code, shipper_country, shipper_contact_no, shipper_email,
+    consignee_company, consignee_contact_name, consignee_address_1, consignee_address_2,
+    consignee_locality, consignee_post_code, consignee_country, consignee_contact_no,
+    total_pieces, total_weight, items, special_instruction
+`;
+
+function mapAssignment(row: any): DriverPickupAssignment {
+    return {
+        id: row.id,
+        booking_id: row.booking_id,
+        miles_ref: row.miles_ref,
+        driver_id: row.driver_id,
+        assigned_by_email: row.assigned_by_email || '',
+        pickup_date: row.pickup_date,
+        message: row.message,
+        is_urgent: row.is_urgent || false,
+        status: row.status,
+        transfer_reason: row.transfer_reason,
+        transfer_requested_at: row.transfer_requested_at,
+        completed_at: row.completed_at,
+        created_at: row.created_at,
+        service_level_id: row.service_level_id || null,
+        service_level: row.service_level || '',
+        is_export: row.is_export || false,
+        collection_date: row.collection_date || null,
+        collection_time_from: row.collection_time_from || null,
+        collection_time_to: row.collection_time_to || null,
+        shipper_company: row.shipper_company || '',
+        shipper_contact_name: row.shipper_contact_name || '',
+        shipper_address_1: row.shipper_address_1 || '',
+        shipper_address_2: row.shipper_address_2 || '',
+        shipper_locality: row.shipper_locality || '',
+        shipper_post_code: row.shipper_post_code || '',
+        shipper_country: row.shipper_country || '',
+        shipper_contact_no: row.shipper_contact_no || '',
+        shipper_email: row.shipper_email || '',
+        consignee_company: row.consignee_company || '',
+        consignee_contact_name: row.consignee_contact_name || '',
+        consignee_address_1: row.consignee_address_1 || '',
+        consignee_address_2: row.consignee_address_2 || '',
+        consignee_locality: row.consignee_locality || '',
+        consignee_post_code: row.consignee_post_code || '',
+        consignee_country: row.consignee_country || '',
+        consignee_contact_no: row.consignee_contact_no || '',
+        total_pieces: row.total_pieces || 0,
+        total_weight: row.total_weight || 0,
+        items: Array.isArray(row.items) ? row.items : [],
+        special_instruction: row.special_instruction || '',
+    };
+}
+
 export const fetchDriverAssignments = async (
     driverId: string,
     date: string
 ): Promise<{ assigned: DriverPickupAssignment[]; completed: DriverPickupAssignment[] }> => {
     try {
-        // Active assignments: show ALL regardless of date
         const { data: activeData, error: activeError } = await supabaseQuery<any[]>(async (client) => {
             return await client
                 .from('pickup_assignments')
-                .select('*')
+                .select(ASSIGNMENT_SELECT)
                 .eq('driver_id', driverId)
                 .in('status', ['assigned', 'transfer_requested'])
                 .order('created_at', { ascending: false });
         });
 
-        // Completed: only today
         const { data: completedData, error: completedError } = await supabaseQuery<any[]>(async (client) => {
             return await client
                 .from('pickup_assignments')
-                .select('*')
+                .select(ASSIGNMENT_SELECT)
                 .eq('driver_id', driverId)
                 .eq('pickup_date', date)
                 .eq('status', 'completed')
@@ -63,22 +143,16 @@ export const fetchDriverAssignments = async (
         if (activeError) console.error('Error fetching active assignments:', activeError);
         if (completedError) console.error('Error fetching completed assignments:', completedError);
 
-        const allActive = activeData || [];
-        const allCompleted = completedData || [];
+        const assigned = (activeData || []).map(mapAssignment);
+        const completed = (completedData || []).map(mapAssignment);
 
-        // Enrich both with BizHandle data
-        const allBookingIds = [...allActive, ...allCompleted].map((a: any) => a.booking_id);
-        const enrichedActive = await enrichWithBizHandleData(allActive, allActive.map(a => a.booking_id));
-        const enrichedCompleted = await enrichWithBizHandleData(allCompleted, allCompleted.map(a => a.booking_id));
-
-        return { assigned: enrichedActive, completed: enrichedCompleted };
+        return { assigned, completed };
     } catch (err) {
         console.error('fetchDriverAssignments error:', err);
         return { assigned: [], completed: [] };
     }
 };
 
-// Fetch assignment history for date range
 export const fetchAssignmentHistory = async (
     driverId: string,
     dateFrom: string,
@@ -88,7 +162,7 @@ export const fetchAssignmentHistory = async (
         const { data, error } = await supabaseQuery<any[]>(async (client) => {
             return await client
                 .from('pickup_assignments')
-                .select('*')
+                .select(ASSIGNMENT_SELECT)
                 .eq('driver_id', driverId)
                 .gte('pickup_date', dateFrom)
                 .lte('pickup_date', dateTo)
@@ -97,15 +171,13 @@ export const fetchAssignmentHistory = async (
 
         if (error || !data) return [];
 
-        const bookingIds = data.map((a: any) => a.booking_id);
-        return await enrichWithBizHandleData(data, bookingIds);
+        return data.map(mapAssignment);
     } catch (err) {
         console.error('fetchAssignmentHistory error:', err);
         return [];
     }
 };
 
-// Request transfer (driver side)
 export const requestTransfer = async (assignmentId: string, reason: string): Promise<boolean> => {
     try {
         const { error } = await supabaseQuery(async (client) => {
@@ -126,12 +198,10 @@ export const requestTransfer = async (assignmentId: string, reason: string): Pro
             return false;
         }
 
-        // Also log it
         const user = await supabase.auth.getUser();
         const userId = user.data.user?.id;
 
         if (userId) {
-            // Get assignment details for logging
             const { data: assignment } = await supabaseQuery<any>(async (client) => {
                 return await client
                     .from('pickup_assignments')
@@ -162,8 +232,6 @@ export const requestTransfer = async (assignmentId: string, reason: string): Pro
     }
 };
 
-// Check if any assigned bookings have been picked up (status_id 29)
-// Called every 5 seconds from the polling loop
 export const checkPickedUpStatus = async (assignments: DriverPickupAssignment[]): Promise<number[]> => {
     const activeAssignments = assignments.filter(a => a.status === 'assigned');
     if (activeAssignments.length === 0) return [];
@@ -191,7 +259,6 @@ WHERE b.booking_id IN (${bookingIds.join(',')})
     }
 };
 
-// Mark assignments as completed for picked-up bookings
 export const markAssignmentsCompleted = async (bookingIds: number[]): Promise<void> => {
     if (bookingIds.length === 0) return;
 
@@ -214,7 +281,6 @@ export const markAssignmentsCompleted = async (bookingIds: number[]): Promise<vo
     }
 };
 
-// Supabase Realtime subscription for new assignments
 let realtimeChannel: RealtimeChannel | null = null;
 
 export const subscribeToAssignments = (
@@ -263,80 +329,3 @@ export const subscribeToAssignments = (
         }
     };
 };
-
-// Enrich assignment data with booking info from BizHandle
-async function enrichWithBizHandleData(
-    assignments: any[],
-    bookingIds: number[]
-): Promise<DriverPickupAssignment[]> {
-    if (bookingIds.length === 0) return assignments;
-
-    try {
-        const query = `
-SELECT 
-  b.booking_id,
-  COALESCE(NULLIF(TRIM(shipper.company), ''), shipper.contact_name) as shipper_company,
-  COALESCE(shipper.custom_city, shipper_city.name) as shipper_locality,
-  shipper.contact_no as shipper_contact_no,
-  shipper.address_1 as shipper_address_1,
-  COALESCE(NULLIF(TRIM(consignee.company), ''), consignee.contact_name) as consignee_company,
-  COALESCE(consignee.custom_city, consignee_city.name) as consignee_locality,
-  consignee_country.name as consignee_country,
-  bt.time_from as collection_time_from,
-  bt.time_to as collection_time_to,
-  sl.name as service_level,
-  be.total_pieces,
-  be.total_weight,
-  latest_status.status_id as current_status_id,
-  latest_status.status_name as current_status_name
-FROM miles_production.booking b
-LEFT JOIN miles_production.booking_timeframe bt ON b.booking_id = bt.booking_id AND bt.type IN ('collection', 'am')
-LEFT JOIN miles_production.service_level sl ON b.service_level_id = sl.service_level_id
-LEFT JOIN miles_production.prev_address shipper ON b.shipper_prev_address_id = shipper.prev_address_id
-LEFT JOIN miles_production.prev_address consignee ON b.consignee_prev_address_id = consignee.prev_address_id
-LEFT JOIN miles_production.city shipper_city ON shipper.city_id = shipper_city.city_id
-LEFT JOIN miles_production.city consignee_city ON consignee.city_id = consignee_city.city_id
-LEFT JOIN miles_production.country consignee_country ON consignee.country_id = consignee_country.country_id
-LEFT JOIN miles_production.booking_extra be ON b.booking_id = be.booking_id
-INNER JOIN LATERAL (
-  SELECT bs.status_id, s.name as status_name
-  FROM miles_production.booking_status bs
-  LEFT JOIN miles_production.status s ON s.status_id = bs.status_id
-  WHERE bs.booking_id = b.booking_id AND bs.deleted_at IS NULL
-  ORDER BY bs.delivered_date DESC, bs.delivered_time DESC, bs.updated_at DESC
-  LIMIT 1
-) latest_status ON true
-WHERE b.booking_id IN (${bookingIds.join(',')})
-  AND b.deleted_at IS NULL
-        `;
-
-        const { data: bhData } = await bizhandleRpcWithRetry('execute_sql', { sql: query });
-
-        const bhMap = new Map<number, any>();
-        (bhData || []).forEach((row: any) => bhMap.set(row.booking_id, row));
-
-        return assignments.map((a: any) => {
-            const bh = bhMap.get(a.booking_id);
-            return {
-                ...a,
-                shipper_company: bh?.shipper_company || '',
-                shipper_locality: bh?.shipper_locality || '',
-                shipper_contact_no: bh?.shipper_contact_no || '',
-                shipper_address_1: bh?.shipper_address_1 || '',
-                consignee_company: bh?.consignee_company || '',
-                consignee_locality: bh?.consignee_locality || '',
-                consignee_country: bh?.consignee_country || '',
-                collection_time_from: bh?.collection_time_from || '',
-                collection_time_to: bh?.collection_time_to || '',
-                service_level: bh?.service_level || '',
-                current_status_id: bh?.current_status_id,
-                current_status_name: bh?.current_status_name || '',
-                total_pieces: bh?.total_pieces || 0,
-                total_weight: bh?.total_weight || 0
-            };
-        });
-    } catch (err) {
-        console.error('enrichWithBizHandleData error:', err);
-        return assignments;
-    }
-}

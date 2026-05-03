@@ -30,7 +30,6 @@ export default function PickupsScreen() {
     const [completed, setCompleted] = useState<DriverPickupAssignment[]>([]);
     const [driverId, setDriverId] = useState<string | null>(null);
 
-    // Transfer request modal
     const [transferModal, setTransferModal] = useState<{
         visible: boolean;
         assignment: DriverPickupAssignment | null;
@@ -42,7 +41,6 @@ export default function PickupsScreen() {
 
     const todayStr = new Date().toISOString().split('T')[0];
 
-    // Init
     useEffect(() => {
         setupPickupNotificationChannel();
         loadInitialData();
@@ -65,7 +63,6 @@ export default function PickupsScreen() {
 
         const result = await fetchDriverAssignments(did, todayStr);
 
-        // Notify if new assignments appeared
         if (result.assigned.length > previousAssignedCountRef.current && previousAssignedCountRef.current > 0) {
             const newest = result.assigned[0];
             if (newest) {
@@ -78,12 +75,11 @@ export default function PickupsScreen() {
         setCompleted(result.completed);
     }, [driverId, todayStr]);
 
-    // 5 second polling for status changes
+    // 5 second polling for BizHandle status changes
     useEffect(() => {
         if (!driverId) return;
 
         const poll = async () => {
-            // Check if any assigned bookings got picked up in BizHandle
             const pickedUpIds = await checkPickedUpStatus(assigned);
             if (pickedUpIds.length > 0) {
                 await markAssignmentsCompleted(pickedUpIds);
@@ -104,14 +100,14 @@ export default function PickupsScreen() {
 
         const unsubscribe = subscribeToAssignments(
             driverId,
-            () => loadAssignments(), // new assignment
-            () => loadAssignments()  // status change (transfer approved/rejected)
+            () => loadAssignments(),
+            () => loadAssignments()
         );
 
         return unsubscribe;
     }, [driverId, loadAssignments]);
 
-    // Pause polling when app goes background, resume on foreground
+    // App state handling
     useEffect(() => {
         const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
             if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
@@ -135,6 +131,13 @@ export default function PickupsScreen() {
 
     const handleTransferSuccess = () => {
         loadAssignments();
+    };
+
+    const handleSlideConfirm = (assignment: DriverPickupAssignment) => {
+        router.push({
+            pathname: '/(dashboard)/bookings/single-scan',
+            params: { bookingRef: assignment.miles_ref },
+        });
     };
 
     if (loading) {
@@ -172,7 +175,6 @@ export default function PickupsScreen() {
                     )}
                 </TouchableOpacity>
 
-                {/* History link */}
                 <TouchableOpacity
                     style={styles.historyBtn}
                     onPress={() => router.push('/(dashboard)/pickups/history')}
@@ -206,6 +208,7 @@ export default function PickupsScreen() {
                                 key={a.id}
                                 assignment={a}
                                 onRequestTransfer={handleRequestTransfer}
+                                onSlideConfirm={handleSlideConfirm}
                             />
                         ))
                     )
