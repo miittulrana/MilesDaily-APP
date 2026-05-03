@@ -39,29 +39,39 @@ export const fetchDriverAssignments = async (
     date: string
 ): Promise<{ assigned: DriverPickupAssignment[]; completed: DriverPickupAssignment[] }> => {
     try {
-        const { data, error } = await supabaseQuery<any[]>(async (client) => {
+        // Active assignments: show ALL regardless of date
+        const { data: activeData, error: activeError } = await supabaseQuery<any[]>(async (client) => {
+            return await client
+                .from('pickup_assignments')
+                .select('*')
+                .eq('driver_id', driverId)
+                .in('status', ['assigned', 'transfer_requested'])
+                .order('created_at', { ascending: false });
+        });
+
+        // Completed: only today
+        const { data: completedData, error: completedError } = await supabaseQuery<any[]>(async (client) => {
             return await client
                 .from('pickup_assignments')
                 .select('*')
                 .eq('driver_id', driverId)
                 .eq('pickup_date', date)
-                .in('status', ['assigned', 'completed', 'transfer_requested'])
-                .order('created_at', { ascending: false });
+                .eq('status', 'completed')
+                .order('completed_at', { ascending: false });
         });
 
-        if (error || !data) {
-            console.error('Error fetching assignments:', error);
-            return { assigned: [], completed: [] };
-        }
+        if (activeError) console.error('Error fetching active assignments:', activeError);
+        if (completedError) console.error('Error fetching completed assignments:', completedError);
 
-        // Fetch booking details from BizHandle for all booking IDs
-        const bookingIds = data.map((a: any) => a.booking_id);
-        const enriched = await enrichWithBizHandleData(data, bookingIds);
+        const allActive = activeData || [];
+        const allCompleted = completedData || [];
 
-        const assigned = enriched.filter(a => a.status === 'assigned' || a.status === 'transfer_requested');
-        const completed = enriched.filter(a => a.status === 'completed');
+        // Enrich both with BizHandle data
+        const allBookingIds = [...allActive, ...allCompleted].map((a: any) => a.booking_id);
+        const enrichedActive = await enrichWithBizHandleData(allActive, allActive.map(a => a.booking_id));
+        const enrichedCompleted = await enrichWithBizHandleData(allCompleted, allCompleted.map(a => a.booking_id));
 
-        return { assigned, completed };
+        return { assigned: enrichedActive, completed: enrichedCompleted };
     } catch (err) {
         console.error('fetchDriverAssignments error:', err);
         return { assigned: [], completed: [] };
