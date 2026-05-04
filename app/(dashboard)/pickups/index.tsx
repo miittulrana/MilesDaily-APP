@@ -141,12 +141,12 @@ export default function PickupsScreen() {
         });
     };
 
-    // Grouped pickup slide confirm -> bulk scan with pre-loaded refs
-    const handleGroupSlideConfirm = (assignments: DriverPickupAssignment[]) => {
-        const milesRefs = assignments.map(a => a.miles_ref).join(',');
+    // Grouped pickup card tap -> navigate to grouped detail
+    const handleGroupPress = (group: GroupedPickupAssignment) => {
+        const ids = group.assignments.map(a => a.id).join(',');
         router.push({
-            pathname: '/(dashboard)/bookings/bulk-scan',
-            params: { mode: 'pickup', refs: milesRefs },
+            pathname: '/(dashboard)/pickups/grouped-detail',
+            params: { ids },
         });
     };
 
@@ -222,8 +222,7 @@ export default function PickupsScreen() {
                                 <GroupedPickupCard
                                     key={g.key}
                                     group={g}
-                                    onRequestTransfer={handleRequestTransfer}
-                                    onSlideConfirm={handleGroupSlideConfirm}
+                                    onPress={() => handleGroupPress(g)}
                                 />
                             ))}
                             {/* Single pickup cards */}

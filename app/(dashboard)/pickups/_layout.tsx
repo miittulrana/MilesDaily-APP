@@ -13,6 +13,7 @@ export default function PickupsLayout() {
             <Stack.Screen name="index" />
             <Stack.Screen name="history" />
             <Stack.Screen name="detail" />
+            <Stack.Screen name="grouped-detail" />
         </Stack>
     );
 }
