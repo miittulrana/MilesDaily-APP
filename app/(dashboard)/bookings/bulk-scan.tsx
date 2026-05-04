@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet,
@@ -40,12 +40,21 @@ import StatusPhotoCapture from '../../../components/StatusPhotoCapture';
 interface ScannedBooking extends Booking {
   scanned_at: string;
   codInfo?: CODInfo;
+  selected?: boolean;
 }
 
 export default function BulkScanScreen() {
   const router = useRouter();
-  const [scanning, setScanning] = useState(true);
+  const params = useLocalSearchParams();
+
+  // Pickup mode: auto-load refs, no camera
+  const isPickupMode = params.mode === 'pickup';
+  const pickupRefs = isPickupMode && params.refs ? (params.refs as string).split(',') : [];
+
+  const [scanning, setScanning] = useState(!isPickupMode);
   const [loading, setLoading] = useState(false);
+  const [autoLoading, setAutoLoading] = useState(isPickupMode);
+  const [autoLoadProgress, setAutoLoadProgress] = useState(0);
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<Status | null>(null);
   const [scannedBookings, setScannedBookings] = useState<ScannedBooking[]>([]);
@@ -68,11 +77,8 @@ export default function BulkScanScreen() {
   const [bulkReason, setBulkReason] = useState<string>('');
   const [bulkPhotos, setBulkPhotos] = useState<CompressedImage[]>([]);
 
-  // Manual input state
   const [manualInput, setManualInput] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-
-  // Scanner lock - prevents new scans while processing
   const [scannerLocked, setScannerLocked] = useState(false);
 
   const processingBarcode = useRef<string | null>(null);
@@ -81,6 +87,13 @@ export default function BulkScanScreen() {
 
   useEffect(() => {
     loadInitialData();
+  }, []);
+
+  // Auto-load refs in pickup mode
+  useEffect(() => {
+    if (isPickupMode && pickupRefs.length > 0) {
+      autoLoadRefs();
+    }
   }, []);
 
   const loadInitialData = async () => {
@@ -108,12 +121,78 @@ export default function BulkScanScreen() {
     }
   };
 
+  const autoLoadRefs = async () => {
+    setAutoLoading(true);
+    const loaded: ScannedBooking[] = [];
+    const failed: string[] = [];
+
+    for (let i = 0; i < pickupRefs.length; i++) {
+      const ref = pickupRefs[i].trim();
+      if (!ref) continue;
+
+      setAutoLoadProgress(Math.round(((i + 1) / pickupRefs.length) * 100));
+
+      let result = await findBooking(ref);
+      if (!result.success && result.error === 'Booking not found') {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        result = await findBooking(ref);
+      }
+
+      if (result.success && result.booking) {
+        const booking = result.booking;
+        const codInfo = booking.special_instruction
+          ? parseCODFromSpecialInstruction(booking.special_instruction)
+          : undefined;
+
+        loaded.push({
+          ...booking,
+          scanned_at: new Date().toISOString(),
+          codInfo,
+          selected: true,
+        });
+
+        scannedBarcodesRef.current.add(ref.toUpperCase());
+        scannedBarcodesRef.current.add(booking.miles_ref.toUpperCase());
+        scannedBarcodesRef.current.add(booking.hawb.toUpperCase());
+      } else {
+        failed.push(ref);
+      }
+    }
+
+    setScannedBookings(loaded);
+    setAutoLoading(false);
+
+    if (failed.length > 0) {
+      Alert.alert(
+        'Some bookings failed to load',
+        `Could not find: ${failed.join(', ')}`,
+        [{ text: 'OK' }]
+      );
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const toggleBookingSelection = (index: number) => {
+    setScannedBookings(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], selected: !updated[index].selected };
+      return updated;
+    });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const getSelectedBookings = (): ScannedBooking[] => {
+    if (isPickupMode) {
+      return scannedBookings.filter(b => b.selected !== false);
+    }
+    return scannedBookings;
+  };
+
   const addBookingToList = async (barcode: string): Promise<void> => {
     const normalizedBarcode = barcode.trim().toUpperCase();
 
-    if (processingBarcode.current === normalizedBarcode) {
-      return;
-    }
+    if (processingBarcode.current === normalizedBarcode) return;
 
     if (scannedBarcodesRef.current.has(normalizedBarcode)) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -134,13 +213,10 @@ export default function BulkScanScreen() {
 
     processingBarcode.current = normalizedBarcode;
     setIsSearching(true);
-    setScannerLocked(true); // Lock scanner while processing
+    setScannerLocked(true);
 
-    // Try up to 2 times for manual input (API can be slow on first request)
     let result = await findBooking(barcode);
-
     if (!result.success && result.error === 'Booking not found') {
-      // Wait briefly and retry once
       await new Promise(resolve => setTimeout(resolve, 500));
       result = await findBooking(barcode);
     }
@@ -151,30 +227,24 @@ export default function BulkScanScreen() {
     if (!result.success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', result.error || 'Booking not found');
-      setScannerLocked(false); // Unlock scanner
+      setScannerLocked(false);
       return;
     }
 
     const booking = result.booking!;
 
-    const alreadyInList = scannedBookings.find(
-      b => b.booking_id === booking.booking_id
-    );
-
+    const alreadyInList = scannedBookings.find(b => b.booking_id === booking.booking_id);
     if (alreadyInList) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert('Already Scanned', `${booking.miles_ref} is already in the list`);
-      setScannerLocked(false); // Unlock scanner
+      setScannerLocked(false);
       return;
     }
 
     if (booking.status.status_id === DELIVERED_STATUS_ID) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert(
-        'Already Delivered',
-        `${booking.miles_ref} has already been delivered. It cannot be added to bulk scan.`
-      );
-      setScannerLocked(false); // Unlock scanner
+      Alert.alert('Already Delivered', `${booking.miles_ref} has already been delivered.`);
+      setScannerLocked(false);
       return;
     }
 
@@ -186,6 +256,7 @@ export default function BulkScanScreen() {
       ...booking,
       scanned_at: new Date().toISOString(),
       codInfo,
+      selected: true,
     };
 
     scannedBarcodesRef.current.add(normalizedBarcode);
@@ -195,14 +266,12 @@ export default function BulkScanScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setScannedBookings(prev => {
       const newList = [...prev, scannedBooking];
-      // Scroll to bottom after adding
       setTimeout(() => {
         listRef.current?.scrollToEnd({ animated: true });
       }, 100);
       return newList;
     });
 
-    // Unlock scanner after successful add
     setScannerLocked(false);
   };
 
@@ -213,7 +282,7 @@ export default function BulkScanScreen() {
   const handleManualSubmit = async () => {
     const trimmed = manualInput.trim();
     if (!trimmed) return;
-    if (scannerLocked) return; // Don't allow manual input while locked
+    if (scannerLocked) return;
 
     setManualInput('');
     await addBookingToList(trimmed);
@@ -221,10 +290,8 @@ export default function BulkScanScreen() {
 
   const handleRemoveBooking = (index: number) => {
     const bookingToRemove = scannedBookings[index];
-
     scannedBarcodesRef.current.delete(bookingToRemove.miles_ref.toUpperCase());
     scannedBarcodesRef.current.delete(bookingToRemove.hawb.toUpperCase());
-
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setScannedBookings(prev => prev.filter((_, i) => i !== index));
   };
@@ -249,8 +316,9 @@ export default function BulkScanScreen() {
   };
 
   const handleProceedToStatus = () => {
-    if (scannedBookings.length === 0) {
-      Alert.alert('No Bookings', 'Please scan at least one booking');
+    const selected = getSelectedBookings();
+    if (selected.length === 0) {
+      Alert.alert('No Bookings', isPickupMode ? 'Please select at least one booking' : 'Please scan at least one booking');
       return;
     }
 
@@ -262,7 +330,9 @@ export default function BulkScanScreen() {
     status: Status,
     requirements: { callRequired: boolean; photoRequired: boolean; reasonRequired: boolean; twoStep: boolean }
   ) => {
-    const hasCODBookings = scannedBookings.some(b => b.codInfo?.hasCOD);
+    const selected = getSelectedBookings();
+
+    const hasCODBookings = selected.some(b => b.codInfo?.hasCOD);
     if (requirements.twoStep && hasCODBookings) {
       Alert.alert(
         'COD Not Supported in Bulk',
@@ -272,7 +342,7 @@ export default function BulkScanScreen() {
       return;
     }
 
-    for (const booking of scannedBookings) {
+    for (const booking of selected) {
       const validation = await validateStatusSelection(booking.booking_id, status.status_id, booking);
       if (!validation.allowed) {
         Alert.alert(
@@ -293,7 +363,7 @@ export default function BulkScanScreen() {
     if (requirements.callRequired) {
       Alert.alert(
         'Call Required',
-        `This status requires calling customers. For ${scannedBookings.length} bookings, you confirm you have called ALL customers?`,
+        `This status requires calling customers. For ${selected.length} bookings, you confirm you have called ALL customers?`,
         [
           { text: 'Cancel', style: 'cancel', onPress: () => { setPendingStatus(null); setPendingRequirements(null); } },
           { text: 'Yes, I Called All', onPress: () => handleBulkCallConfirmed(status, requirements) }
@@ -304,7 +374,7 @@ export default function BulkScanScreen() {
     } else if (requirements.photoRequired) {
       Alert.alert(
         'Photo Required',
-        `Take 1 photo that will be applied to all ${scannedBookings.length} bookings.`,
+        `Take 1 photo that will be applied to all ${selected.length} bookings.`,
         [
           { text: 'Cancel', style: 'cancel', onPress: () => { setPendingStatus(null); setPendingRequirements(null); } },
           { text: 'Continue', onPress: () => setShowPhotoCapture(true) }
@@ -339,7 +409,8 @@ export default function BulkScanScreen() {
         return;
       }
 
-      for (const booking of scannedBookings) {
+      const selected = getSelectedBookings();
+      for (const booking of selected) {
         await saveStatusNote({
           booking_id: booking.booking_id,
           miles_ref: booking.miles_ref,
@@ -374,7 +445,8 @@ export default function BulkScanScreen() {
         return;
       }
 
-      for (const booking of scannedBookings) {
+      const selected = getSelectedBookings();
+      for (const booking of selected) {
         await saveStatusPOD({
           booking_id: booking.booking_id,
           miles_ref: booking.miles_ref,
@@ -398,9 +470,11 @@ export default function BulkScanScreen() {
   };
 
   const processBulkUpdate = async (status: Status, reason?: string) => {
+    const selected = getSelectedBookings();
+
     if (status.need_customer_confirmation) {
-      const bookingIds = scannedBookings.map(b => b.booking_id).join(',');
-      const milesRefs = scannedBookings.map(b => b.miles_ref).join(',');
+      const bookingIds = selected.map(b => b.booking_id).join(',');
+      const milesRefs = selected.map(b => b.miles_ref).join(',');
 
       router.push({
         pathname: '/(dashboard)/bookings/signature',
@@ -423,7 +497,7 @@ export default function BulkScanScreen() {
     let successCount = 0;
     let failedBookings: string[] = [];
 
-    for (const booking of scannedBookings) {
+    for (const booking of selected) {
       const result = await updateBooking({
         booking_id: booking.booking_id,
         status_id: status.status_id,
@@ -458,10 +532,11 @@ export default function BulkScanScreen() {
 
   const handleStatusSelect = (status: Status) => {
     setSelectedStatus(status);
+    const selected = getSelectedBookings();
 
     if (status.need_customer_confirmation) {
-      const bookingIds = scannedBookings.map(b => b.booking_id).join(',');
-      const milesRefs = scannedBookings.map(b => b.miles_ref).join(',');
+      const bookingIds = selected.map(b => b.booking_id).join(',');
+      const milesRefs = selected.map(b => b.miles_ref).join(',');
 
       router.push({
         pathname: '/(dashboard)/bookings/signature',
@@ -479,6 +554,7 @@ export default function BulkScanScreen() {
 
   const handleBulkUpdate = async (status: Status) => {
     setLoading(true);
+    const selected = getSelectedBookings();
 
     const now = new Date();
     const delivered_date = now.toISOString().split('T')[0];
@@ -487,7 +563,7 @@ export default function BulkScanScreen() {
     let successCount = 0;
     let failedBookings: string[] = [];
 
-    for (const booking of scannedBookings) {
+    for (const booking of selected) {
       const result = await updateBooking({
         booking_id: booking.booking_id,
         status_id: status.status_id,
@@ -521,18 +597,33 @@ export default function BulkScanScreen() {
 
   const handleBackToScanning = () => {
     setShowStatusSelector(false);
-    setScanning(true);
+    if (!isPickupMode) setScanning(true);
     setSelectedStatus(null);
     setPendingStatus(null);
     setPendingRequirements(null);
   };
 
+  const selectedCount = getSelectedBookings().length;
+
   const renderBookingItem = useCallback(({ item, index }: { item: ScannedBooking; index: number }) => (
     <View style={styles.bookingItem}>
-      <View style={styles.bookingItemNumber}>
-        <Text style={styles.bookingItemNumberText}>{index + 1}</Text>
-      </View>
-      <View style={styles.bookingItemContent}>
+      {isPickupMode ? (
+        <TouchableOpacity
+          style={[styles.checkboxBtn, item.selected !== false && styles.checkboxBtnActive]}
+          onPress={() => toggleBookingSelection(index)}
+        >
+          {item.selected !== false ? (
+            <Ionicons name="checkbox" size={22} color={colors.primary} />
+          ) : (
+            <Ionicons name="square-outline" size={22} color={colors.gray400} />
+          )}
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.bookingItemNumber}>
+          <Text style={styles.bookingItemNumberText}>{index + 1}</Text>
+        </View>
+      )}
+      <View style={[styles.bookingItemContent, isPickupMode && item.selected === false && styles.bookingItemDeselected]}>
         <Text style={styles.bookingItemRef}>{item.miles_ref}</Text>
         <Text style={styles.bookingItemHawb}>{item.hawb}</Text>
       </View>
@@ -541,15 +632,17 @@ export default function BulkScanScreen() {
           <Text style={styles.codBadgeText}>COD</Text>
         </View>
       )}
-      <TouchableOpacity
-        style={styles.removeButton}
-        onPress={() => handleRemoveBooking(index)}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Ionicons name="close-circle" size={22} color={colors.error} />
-      </TouchableOpacity>
+      {!isPickupMode && (
+        <TouchableOpacity
+          style={styles.removeButton}
+          onPress={() => handleRemoveBooking(index)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="close-circle" size={22} color={colors.error} />
+        </TouchableOpacity>
+      )}
     </View>
-  ), [scannedBookings]);
+  ), [scannedBookings, isPickupMode]);
 
   const renderEmptyList = () => (
     <View style={styles.emptyList}>
@@ -558,6 +651,27 @@ export default function BulkScanScreen() {
       <Text style={styles.emptyListText}>Scan barcodes or type booking numbers above</Text>
     </View>
   );
+
+  // Auto-loading screen for pickup mode
+  if (autoLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <View style={styles.autoLoadContainer}>
+          <View style={styles.autoLoadContent}>
+            <View style={styles.autoLoadIconContainer}>
+              <Ionicons name="layers" size={32} color={colors.primary} />
+            </View>
+            <Text style={styles.autoLoadTitle}>Loading {pickupRefs.length} Pickups</Text>
+            <Text style={styles.autoLoadSubtitle}>Looking up booking details...</Text>
+            <View style={styles.autoLoadProgressBar}>
+              <View style={[styles.autoLoadProgressFill, { width: `${autoLoadProgress}%` }]} />
+            </View>
+            <Text style={styles.autoLoadProgressText}>{autoLoadProgress}%</Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (loading) {
     return <LoadingIndicator fullScreen message="Processing..." />;
@@ -569,7 +683,7 @@ export default function BulkScanScreen() {
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {scanning && !showStatusSelector && (
+        {(scanning || isPickupMode) && !showStatusSelector && (
           <>
             {/* Header */}
             <View style={styles.header}>
@@ -579,66 +693,76 @@ export default function BulkScanScreen() {
               >
                 <Ionicons name="arrow-back" size={24} color={colors.text} />
               </TouchableOpacity>
-              <Text style={styles.headerTitle}>Bulk Scan</Text>
-              {scannedBookings.length > 0 && (
+              <Text style={styles.headerTitle}>
+                {isPickupMode ? `Pickup (${pickupRefs.length})` : 'Bulk Scan'}
+              </Text>
+              {scannedBookings.length > 0 && !isPickupMode && (
                 <TouchableOpacity onPress={handleClearAll}>
                   <Text style={styles.clearAllButton}>Clear All</Text>
                 </TouchableOpacity>
               )}
             </View>
 
-            {/* Manual Input */}
-            <View style={styles.manualInputContainer}>
-              <View style={styles.manualInputWrapper}>
-                <Ionicons name="barcode-outline" size={20} color={colors.gray400} />
-                <TextInput
-                  style={styles.manualInput}
-                  value={manualInput}
-                  onChangeText={setManualInput}
-                  placeholder="Type booking number..."
-                  placeholderTextColor={colors.gray400}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  returnKeyType="search"
-                  onSubmitEditing={handleManualSubmit}
-                  editable={!scannerLocked}
-                />
-                {manualInput.length > 0 && (
-                  <TouchableOpacity onPress={() => setManualInput('')}>
-                    <Ionicons name="close-circle" size={20} color={colors.gray400} />
-                  </TouchableOpacity>
-                )}
+            {/* Manual Input - only in normal mode */}
+            {!isPickupMode && (
+              <View style={styles.manualInputContainer}>
+                <View style={styles.manualInputWrapper}>
+                  <Ionicons name="barcode-outline" size={20} color={colors.gray400} />
+                  <TextInput
+                    style={styles.manualInput}
+                    value={manualInput}
+                    onChangeText={setManualInput}
+                    placeholder="Type booking number..."
+                    placeholderTextColor={colors.gray400}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    returnKeyType="search"
+                    onSubmitEditing={handleManualSubmit}
+                    editable={!scannerLocked}
+                  />
+                  {manualInput.length > 0 && (
+                    <TouchableOpacity onPress={() => setManualInput('')}>
+                      <Ionicons name="close-circle" size={20} color={colors.gray400} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.manualInputButton,
+                    (!manualInput.trim() || scannerLocked) && styles.manualInputButtonDisabled
+                  ]}
+                  onPress={handleManualSubmit}
+                  disabled={!manualInput.trim() || scannerLocked}
+                >
+                  <Ionicons name="add" size={24} color="#FFFFFF" />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={[
-                  styles.manualInputButton,
-                  (!manualInput.trim() || scannerLocked) && styles.manualInputButtonDisabled
-                ]}
-                onPress={handleManualSubmit}
-                disabled={!manualInput.trim() || scannerLocked}
-              >
-                <Ionicons name="add" size={24} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
+            )}
 
-            {/* Scanner - Compact */}
-            <View style={styles.scannerWrapper}>
-              <BarcodeScanner
-                onScan={handleBarcodeScan}
-                cooldownMode={true}
-                cooldownDuration={1500}
-                compact={true}
-                locked={scannerLocked}
-              />
-            </View>
+            {/* Scanner - only in normal mode */}
+            {!isPickupMode && (
+              <View style={styles.scannerWrapper}>
+                <BarcodeScanner
+                  onScan={handleBarcodeScan}
+                  cooldownMode={true}
+                  cooldownDuration={1500}
+                  compact={true}
+                  locked={scannerLocked}
+                />
+              </View>
+            )}
 
             {/* Scanned List */}
             <View style={styles.listContainer}>
               <View style={styles.listHeader}>
                 <Ionicons name="layers-outline" size={20} color={colors.text} />
-                <Text style={styles.listTitle}>Scanned</Text>
+                <Text style={styles.listTitle}>
+                  {isPickupMode ? 'Pickups' : 'Scanned'}
+                </Text>
                 <View style={styles.countBadge}>
-                  <Text style={styles.countBadgeText}>{scannedBookings.length}</Text>
+                  <Text style={styles.countBadgeText}>
+                    {isPickupMode ? `${selectedCount}/${scannedBookings.length}` : scannedBookings.length}
+                  </Text>
                 </View>
               </View>
 
@@ -657,11 +781,12 @@ export default function BulkScanScreen() {
                 contentContainerStyle={scannedBookings.length === 0 ? styles.emptyListContainer : styles.listContent}
                 ListEmptyComponent={renderEmptyList}
                 showsVerticalScrollIndicator={true}
+                extraData={scannedBookings}
               />
             </View>
 
-            {/* Proceed Button - Fixed at bottom */}
-            {scannedBookings.length > 0 && (
+            {/* Proceed Button */}
+            {(isPickupMode ? selectedCount > 0 : scannedBookings.length > 0) && (
               <View style={styles.proceedContainer}>
                 <TouchableOpacity
                   style={styles.proceedButton}
@@ -669,7 +794,7 @@ export default function BulkScanScreen() {
                 >
                   <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
                   <Text style={styles.proceedButtonText}>
-                    Proceed with {scannedBookings.length} booking{scannedBookings.length !== 1 ? 's' : ''}
+                    Proceed with {isPickupMode ? selectedCount : scannedBookings.length} booking{(isPickupMode ? selectedCount : scannedBookings.length) !== 1 ? 's' : ''}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -685,7 +810,9 @@ export default function BulkScanScreen() {
                 onPress={handleBackToScanning}
               >
                 <Ionicons name="arrow-back" size={24} color={colors.text} />
-                <Text style={styles.statusBackButtonText}>Back to Scanning</Text>
+                <Text style={styles.statusBackButtonText}>
+                  {isPickupMode ? 'Back to Pickups' : 'Back to Scanning'}
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -696,7 +823,7 @@ export default function BulkScanScreen() {
                 </View>
                 <View style={styles.summaryInfo}>
                   <Text style={styles.summaryTitle}>
-                    {scannedBookings.length} Booking{scannedBookings.length !== 1 ? 's' : ''} Selected
+                    {selectedCount} Booking{selectedCount !== 1 ? 's' : ''} Selected
                   </Text>
                   <Text style={styles.summarySubtitle}>
                     Select a status to apply to all
@@ -705,7 +832,7 @@ export default function BulkScanScreen() {
               </View>
 
               <View style={styles.bookingSummaryList}>
-                {scannedBookings.slice(0, 6).map((booking, index) => (
+                {getSelectedBookings().slice(0, 6).map((booking, index) => (
                   <View key={booking.booking_id} style={styles.summaryBookingItem}>
                     <Text style={styles.summaryBookingRef}>{booking.miles_ref}</Text>
                     {booking.codInfo?.hasCOD && (
@@ -715,9 +842,9 @@ export default function BulkScanScreen() {
                     )}
                   </View>
                 ))}
-                {scannedBookings.length > 6 && (
+                {selectedCount > 6 && (
                   <View style={styles.moreBookingsBadge}>
-                    <Text style={styles.moreBookingsText}>+{scannedBookings.length - 6} more</Text>
+                    <Text style={styles.moreBookingsText}>+{selectedCount - 6} more</Text>
                   </View>
                 )}
               </View>
@@ -750,7 +877,7 @@ export default function BulkScanScreen() {
         <StatusPhotoCapture
           visible={showPhotoCapture}
           statusId={pendingStatus?.status_id || 0}
-          statusName={`${pendingStatus?.name || ''} - All ${scannedBookings.length} bookings`}
+          statusName={`${pendingStatus?.name || ''} - All ${selectedCount} bookings`}
           onComplete={handlePhotosCaptured}
           onCancel={() => {
             setShowPhotoCapture(false);
@@ -772,6 +899,70 @@ const styles = StyleSheet.create({
   },
   keyboardView: {
     flex: 1,
+  },
+
+  // Auto-load screen
+  autoLoadContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  autoLoadContent: {
+    alignItems: 'center',
+    padding: 32,
+    width: '80%',
+  },
+  autoLoadIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: `${colors.primary}15`,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  autoLoadTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  autoLoadSubtitle: {
+    fontSize: 14,
+    color: colors.textLight,
+    marginBottom: 24,
+  },
+  autoLoadProgressBar: {
+    width: '100%',
+    height: 8,
+    backgroundColor: colors.gray200,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  autoLoadProgressFill: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 4,
+  },
+  autoLoadProgressText: {
+    fontSize: 14,
+    color: colors.textLight,
+    fontWeight: '600',
+  },
+
+  // Checkbox for pickup mode
+  checkboxBtn: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  checkboxBtnActive: {},
+  bookingItemDeselected: {
+    opacity: 0.4,
   },
 
   // Header
@@ -1097,19 +1288,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     marginBottom: 12,
-  },
-  driverTypeInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.gray100,
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 16,
-    gap: 8,
-  },
-  driverTypeText: {
-    fontSize: 13,
-    color: colors.textLight,
   },
   statusSection: {
     marginBottom: 24,

@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
+import { supabase } from './supabase';
 import { WashNotification } from '../utils/washTypes';
 
 Notifications.setNotificationHandler({
@@ -8,6 +9,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -56,8 +59,31 @@ export class NotificationService {
         projectId: '3ea31db3-72cd-4096-a07a-cde10dc6466a',
       });
       this.expoPushToken = token.data;
+
+      // Save token to drivers table in Supabase
+      await this.savePushTokenToSupabase(token.data);
     } catch (error) {
       console.error('Error getting push token:', error);
+    }
+  }
+
+  private async savePushTokenToSupabase(token: string): Promise<void> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('drivers')
+        .update({ expo_push_token: token })
+        .eq('id', user.id);
+
+      if (error) {
+        console.error('Error saving push token:', error);
+      } else {
+        console.log('Push token saved to Supabase');
+      }
+    } catch (err) {
+      console.error('Error saving push token to Supabase:', err);
     }
   }
 
@@ -114,7 +140,7 @@ export class NotificationService {
   ): Promise<void> {
     try {
       console.log('Starting wash reminders for schedule:', scheduleId);
-      
+
       this.stopWashReminders(scheduleId);
 
       await this.sendWashReminderNotification(scheduleId, vehicleInfo);
@@ -125,10 +151,10 @@ export class NotificationService {
         } catch (error) {
           console.error('Error sending recurring wash reminder:', error);
         }
-      }, 30 * 60 * 1000); 
+      }, 30 * 60 * 1000);
 
       this.washReminderIntervals.set(scheduleId, intervalId);
-      
+
       console.log('Wash reminders started for schedule:', scheduleId);
     } catch (error) {
       console.error('Error starting wash reminders:', error);

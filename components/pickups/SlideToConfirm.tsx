@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import {
     View, Text, StyleSheet, Animated, PanResponder,
-    Dimensions, LayoutChangeEvent,
+    LayoutChangeEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -20,32 +20,37 @@ export default function SlideToConfirm({ label, onConfirm, disabled = false }: S
     const translateX = useRef(new Animated.Value(0)).current;
     const [trackWidth, setTrackWidth] = useState(0);
     const [confirmed, setConfirmed] = useState(false);
-    const maxSlide = trackWidth - THUMB_SIZE - TRACK_PADDING * 2;
     const hasTriggeredHaptic = useRef(false);
+    const maxSlideRef = useRef(0);
 
-    const panResponder = useRef(
+    const safeMax = Math.max(trackWidth - THUMB_SIZE - TRACK_PADDING * 2, 1);
+    maxSlideRef.current = safeMax;
+
+    const panResponder = React.useMemo(() =>
         PanResponder.create({
-            onStartShouldSetPanResponder: () => !disabled && !confirmed,
-            onMoveShouldSetPanResponder: (_, g) => !disabled && !confirmed && Math.abs(g.dx) > 5,
+            onStartShouldSetPanResponder: () => !disabled && !confirmed && maxSlideRef.current > 1,
+            onMoveShouldSetPanResponder: (_, g) => !disabled && !confirmed && Math.abs(g.dx) > 5 && maxSlideRef.current > 1,
             onPanResponderGrant: () => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 hasTriggeredHaptic.current = false;
             },
             onPanResponderMove: (_, gestureState) => {
-                const clamped = Math.max(0, Math.min(gestureState.dx, maxSlide));
+                const ms = maxSlideRef.current;
+                const clamped = Math.max(0, Math.min(gestureState.dx, ms));
                 translateX.setValue(clamped);
 
-                if (clamped >= maxSlide * 0.85 && !hasTriggeredHaptic.current) {
+                if (clamped >= ms * 0.85 && !hasTriggeredHaptic.current) {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     hasTriggeredHaptic.current = true;
                 }
             },
             onPanResponderRelease: (_, gestureState) => {
-                const clamped = Math.max(0, Math.min(gestureState.dx, maxSlide));
+                const ms = maxSlideRef.current;
+                const clamped = Math.max(0, Math.min(gestureState.dx, ms));
 
-                if (clamped >= maxSlide * 0.85) {
+                if (clamped >= ms * 0.85) {
                     Animated.spring(translateX, {
-                        toValue: maxSlide,
+                        toValue: ms,
                         useNativeDriver: true,
                         bounciness: 0,
                         speed: 20,
@@ -63,28 +68,23 @@ export default function SlideToConfirm({ label, onConfirm, disabled = false }: S
                     }).start();
                 }
             },
-        })
-    ).current;
+        }),
+        [disabled, confirmed, onConfirm, translateX]);
 
     const handleLayout = (e: LayoutChangeEvent) => {
-        setTrackWidth(e.nativeEvent.layout.width);
+        const w = e.nativeEvent.layout.width;
+        if (w > 0 && w !== trackWidth) {
+            setTrackWidth(w);
+        }
     };
 
-    const labelOpacity = trackWidth > 0
+    const labelOpacity = safeMax > 1
         ? translateX.interpolate({
-            inputRange: [0, maxSlide * 0.4, maxSlide * 0.7],
+            inputRange: [0, safeMax * 0.4, safeMax * 0.7],
             outputRange: [1, 0.5, 0],
             extrapolate: 'clamp',
         })
         : 1;
-
-    const thumbScale = confirmed
-        ? new Animated.Value(1)
-        : translateX.interpolate({
-            inputRange: [0, maxSlide * 0.85, maxSlide],
-            outputRange: [1, 1.05, 1.1],
-            extrapolate: 'clamp',
-        });
 
     return (
         <View
@@ -102,12 +102,7 @@ export default function SlideToConfirm({ label, onConfirm, disabled = false }: S
                 style={[
                     styles.thumb,
                     confirmed && styles.thumbConfirmed,
-                    {
-                        transform: [
-                            { translateX },
-                            { scale: thumbScale },
-                        ],
-                    },
+                    { transform: [{ translateX }] },
                 ]}
                 {...panResponder.panHandlers}
             >

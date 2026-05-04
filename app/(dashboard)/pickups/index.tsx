@@ -9,14 +9,17 @@ import { colors } from '../../../constants/Colors';
 import { layouts } from '../../../constants/layouts';
 import LoadingIndicator from '../../../components/LoadingIndicator';
 import AssignedPickupCard from '../../../components/pickups/AssignedPickupCard';
+import GroupedPickupCard from '../../../components/pickups/GroupedPickupCard';
 import CompletedPickupCard from '../../../components/pickups/CompletedPickupCard';
 import TransferRequestModal from '../../../components/pickups/TransferRequestModal';
 import {
     DriverPickupAssignment,
+    GroupedPickupAssignment,
     fetchDriverAssignments,
     subscribeToAssignments,
     checkPickedUpStatus,
-    markAssignmentsCompleted
+    markAssignmentsCompleted,
+    groupAssignments,
 } from '../../../lib/pickupAssignments';
 import { setupPickupNotificationChannel, notifyNewAssignment } from '../../../lib/pickupNotifications';
 import { getDriverInfo } from '../../../lib/auth';
@@ -75,7 +78,6 @@ export default function PickupsScreen() {
         setCompleted(result.completed);
     }, [driverId, todayStr]);
 
-    // 5 second polling for BizHandle status changes
     useEffect(() => {
         if (!driverId) return;
 
@@ -94,7 +96,6 @@ export default function PickupsScreen() {
         };
     }, [driverId, assigned, loadAssignments]);
 
-    // Realtime subscription
     useEffect(() => {
         if (!driverId) return;
 
@@ -107,7 +108,6 @@ export default function PickupsScreen() {
         return unsubscribe;
     }, [driverId, loadAssignments]);
 
-    // App state handling
     useEffect(() => {
         const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
             if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
@@ -133,12 +133,25 @@ export default function PickupsScreen() {
         loadAssignments();
     };
 
+    // Single pickup slide confirm -> single scan
     const handleSlideConfirm = (assignment: DriverPickupAssignment) => {
         router.push({
             pathname: '/(dashboard)/bookings/single-scan',
             params: { bookingRef: assignment.miles_ref },
         });
     };
+
+    // Grouped pickup slide confirm -> bulk scan with pre-loaded refs
+    const handleGroupSlideConfirm = (assignments: DriverPickupAssignment[]) => {
+        const milesRefs = assignments.map(a => a.miles_ref).join(',');
+        router.push({
+            pathname: '/(dashboard)/bookings/bulk-scan',
+            params: { mode: 'pickup', refs: milesRefs },
+        });
+    };
+
+    // Group the assigned pickups
+    const { grouped, singles } = groupAssignments(assigned);
 
     if (loading) {
         return <LoadingIndicator fullScreen message="Loading your pickups..." />;
@@ -203,14 +216,26 @@ export default function PickupsScreen() {
                             <Text style={styles.emptyHint}>Pull down to refresh</Text>
                         </View>
                     ) : (
-                        assigned.map(a => (
-                            <AssignedPickupCard
-                                key={a.id}
-                                assignment={a}
-                                onRequestTransfer={handleRequestTransfer}
-                                onSlideConfirm={handleSlideConfirm}
-                            />
-                        ))
+                        <>
+                            {/* Grouped pickup cards */}
+                            {grouped.map(g => (
+                                <GroupedPickupCard
+                                    key={g.key}
+                                    group={g}
+                                    onRequestTransfer={handleRequestTransfer}
+                                    onSlideConfirm={handleGroupSlideConfirm}
+                                />
+                            ))}
+                            {/* Single pickup cards */}
+                            {singles.map(a => (
+                                <AssignedPickupCard
+                                    key={a.id}
+                                    assignment={a}
+                                    onRequestTransfer={handleRequestTransfer}
+                                    onSlideConfirm={handleSlideConfirm}
+                                />
+                            ))}
+                        </>
                     )
                 ) : (
                     completed.length === 0 ? (

@@ -19,11 +19,8 @@ export default function PickupsHistoryScreen() {
     const [hasSearched, setHasSearched] = useState(false);
 
     // Date range
-    const [dateFrom, setDateFrom] = useState(() => {
-        const d = new Date();
-        d.setDate(d.getDate() - 7);
-        return d;
-    });
+    const [dateFrom, setDateFrom] = useState(() => new Date());
+
     const [dateTo, setDateTo] = useState(new Date());
 
     // Date picker visibility (Android needs modal)

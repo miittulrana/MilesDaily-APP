@@ -25,7 +25,6 @@ export interface DriverPickupAssignment {
     transfer_requested_at: string | null;
     completed_at: string | null;
     created_at: string;
-    // Details stored at assignment time (from MXP)
     service_level_id: number | null;
     service_level: string;
     is_export: boolean;
@@ -53,9 +52,19 @@ export interface DriverPickupAssignment {
     total_weight: number;
     items: PickupItem[];
     special_instruction: string;
-    // Legacy fields kept for backward compat (populated from stored columns)
     current_status_id?: number;
     current_status_name?: string;
+}
+
+export interface GroupedPickupAssignment {
+    key: string;
+    shipper_company: string;
+    shipper_locality: string;
+    assignments: DriverPickupAssignment[];
+    totalPieces: number;
+    totalWeight: number;
+    hasUrgent: boolean;
+    hasTransferRequested: boolean;
 }
 
 const ASSIGNMENT_SELECT = `
@@ -114,6 +123,42 @@ function mapAssignment(row: any): DriverPickupAssignment {
         items: Array.isArray(row.items) ? row.items : [],
         special_instruction: row.special_instruction || '',
     };
+}
+
+/** Group assignments by shipper + date + service level (same logic as web) */
+export function groupAssignments(assignments: DriverPickupAssignment[]): {
+    grouped: GroupedPickupAssignment[];
+    singles: DriverPickupAssignment[];
+} {
+    const groupMap = new Map<string, DriverPickupAssignment[]>();
+
+    assignments.forEach(a => {
+        const key = `${a.shipper_company}_${a.collection_date}_${a.service_level}`;
+        if (!groupMap.has(key)) groupMap.set(key, []);
+        groupMap.get(key)!.push(a);
+    });
+
+    const grouped: GroupedPickupAssignment[] = [];
+    const singles: DriverPickupAssignment[] = [];
+
+    groupMap.forEach((items, key) => {
+        if (items.length > 1) {
+            grouped.push({
+                key,
+                shipper_company: items[0].shipper_company,
+                shipper_locality: items[0].shipper_locality,
+                assignments: items,
+                totalPieces: items.reduce((s, a) => s + a.total_pieces, 0),
+                totalWeight: items.reduce((s, a) => s + a.total_weight, 0),
+                hasUrgent: items.some(a => a.is_urgent),
+                hasTransferRequested: items.some(a => a.status === 'transfer_requested'),
+            });
+        } else {
+            singles.push(items[0]);
+        }
+    });
+
+    return { grouped, singles };
 }
 
 export const fetchDriverAssignments = async (
