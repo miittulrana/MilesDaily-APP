@@ -289,7 +289,7 @@ SELECT DISTINCT b.booking_id
 FROM miles_production.booking b
 INNER JOIN miles_production.booking_status bs ON b.booking_id = bs.booking_id
 WHERE b.booking_id IN (${bookingIds.join(',')})
-  AND bs.status_id = 29
+  AND bs.status_id = 28
   AND bs.deleted_at IS NULL
         `;
 

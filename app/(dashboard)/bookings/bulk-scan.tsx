@@ -519,13 +519,13 @@ export default function BulkScanScreen() {
       Alert.alert(
         'Success',
         `All ${successCount} bookings updated successfully`,
-        [{ text: 'OK', onPress: () => router.back() }]
+        [{ text: 'OK', onPress: () => isPickupMode ? router.replace('/(dashboard)/pickups') : router.back() }]
       );
     } else {
       Alert.alert(
         'Partial Success',
         `${successCount} bookings updated. Failed: ${failedBookings.join(', ')}`,
-        [{ text: 'OK', onPress: () => router.back() }]
+        [{ text: 'OK', onPress: () => isPickupMode ? router.replace('/(dashboard)/pickups') : router.back() }]
       );
     }
   };
@@ -584,13 +584,13 @@ export default function BulkScanScreen() {
       Alert.alert(
         'Success',
         `All ${successCount} bookings updated successfully`,
-        [{ text: 'OK', onPress: () => router.back() }]
+        [{ text: 'OK', onPress: () => isPickupMode ? router.replace('/(dashboard)/pickups') : router.back() }]
       );
     } else {
       Alert.alert(
         'Partial Success',
         `${successCount} bookings updated. Failed: ${failedBookings.join(', ')}`,
-        [{ text: 'OK', onPress: () => router.back() }]
+        [{ text: 'OK', onPress: () => isPickupMode ? router.replace('/(dashboard)/pickups') : router.back() }]
       );
     }
   };

@@ -409,7 +409,11 @@ export default function SingleScanScreen() {
 
       if (result.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.back();
+        if (params.bookingRef) {
+          router.replace('/(dashboard)/pickups');
+        } else {
+          router.back();
+        }
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Alert.alert('Error', result.error || 'Update failed');
@@ -457,7 +461,11 @@ export default function SingleScanScreen() {
 
     if (result.success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
+      if (params.bookingRef) {
+        router.replace('/(dashboard)/pickups');
+      } else {
+        router.back();
+      }
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', result.error || 'Update failed');

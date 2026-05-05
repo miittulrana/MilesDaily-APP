@@ -133,11 +133,11 @@ export default function PickupsScreen() {
         loadAssignments();
     };
 
-    // Single pickup slide confirm -> single scan
-    const handleSlideConfirm = (assignment: DriverPickupAssignment) => {
+    // Single pickup tap -> navigate to detail screen
+    const handleSinglePress = (assignment: DriverPickupAssignment) => {
         router.push({
-            pathname: '/(dashboard)/bookings/single-scan',
-            params: { bookingRef: assignment.miles_ref },
+            pathname: '/(dashboard)/pickups/detail',
+            params: { id: assignment.id },
         });
     };
 
@@ -230,8 +230,9 @@ export default function PickupsScreen() {
                                 <AssignedPickupCard
                                     key={a.id}
                                     assignment={a}
+                                    onPress={handleSinglePress}
                                     onRequestTransfer={handleRequestTransfer}
-                                    onSlideConfirm={handleSlideConfirm}
+                                    onSlideConfirm={handleSinglePress}
                                 />
                             ))}
                         </>
