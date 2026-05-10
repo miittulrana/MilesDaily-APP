@@ -2,7 +2,7 @@ import { StatusRule } from './types';
 import { saveStatusRules, loadStatusRules } from './storage';
 import { DEFAULT_CONFIG } from '../../constants/defaultConfig';
 
-const API_BASE_URL = 'https://fleet-staging.milesxp.com/api/driver-config';
+const API_BASE_URL = 'https://fleet.milesxp.com/api/driver-config';
 
 let cachedStatusRules: Record<number, StatusRule> | null = null;
 

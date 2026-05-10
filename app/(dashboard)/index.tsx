@@ -4,11 +4,14 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native
 import LoadingIndicator from '../../components/LoadingIndicator';
 import ModuleCard from '../../components/ModuleCard';
 import TempAssignmentBanner from '../../components/temp-assignments/TempAssignmentBanner';
+import InvoiceScanBanner from '../../components/InvoiceScanBanner';
+import InvoiceScanCamera from '../../components/InvoiceScanCamera';
 import { colors } from '../../constants/Colors';
 import { layouts } from '../../constants/layouts';
 import { getAssignedVehicle, getDriverInfo } from '../../lib/auth';
 import { useTempAssignments } from '../../lib/hooks/useTempAssignments';
 import { getAllowedModulesForDriver, shouldShowVehicleSection } from '../../lib/remoteConfig/moduleAccess';
+import { InvoiceScanRequest } from '../../lib/invoiceScanService';
 import { DriverInfo } from '../../utils/types';
 
 const ALL_MODULE_DEFINITIONS = [
@@ -36,6 +39,10 @@ export default function DashboardScreen() {
   const [allowedModules, setAllowedModules] = useState<string[]>(['__ALL__']);
   const [showVehicle, setShowVehicle] = useState(true);
 
+  // Invoice scan state
+  const [scanCameraVisible, setScanCameraVisible] = useState(false);
+  const [activeInvoiceRequest, setActiveInvoiceRequest] = useState<InvoiceScanRequest | null>(null);
+
   const {
     assignments,
     loading: assignmentsLoading,
@@ -52,7 +59,6 @@ export default function DashboardScreen() {
       await AsyncStorage.removeItem('module_access_config');
       await AsyncStorage.removeItem('remote_config_module_access');
       await AsyncStorage.removeItem('driver_config_module_access');
-      // also try wildcard patterns your config system might use
       const allKeys = await AsyncStorage.getAllKeys();
       const configKeys = allKeys.filter(k => k.includes('module') || k.includes('config') || k.includes('remote'));
       console.log('=== CLEARING CONFIG KEYS ===', configKeys);
@@ -206,6 +212,29 @@ export default function DashboardScreen() {
           onRefresh={refetchAssignments}
         />
       )}
+
+      {driver?.bizhandle_staff_id && (
+        <InvoiceScanBanner
+          bizhandleStaffId={driver.bizhandle_staff_id}
+          onAccept={(req) => {
+            setActiveInvoiceRequest(req);
+            setScanCameraVisible(true);
+          }}
+        />
+      )}
+
+      <InvoiceScanCamera
+        visible={scanCameraVisible}
+        request={activeInvoiceRequest}
+        onComplete={() => {
+          setScanCameraVisible(false);
+          setActiveInvoiceRequest(null);
+        }}
+        onCancel={() => {
+          setScanCameraVisible(false);
+          setActiveInvoiceRequest(null);
+        }}
+      />
 
       <View style={styles.modulesGrid}>
         {moduleRows.map((row, rowIndex) => (

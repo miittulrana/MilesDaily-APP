@@ -2,7 +2,7 @@ import { supabase } from '../lib/supabase';
 import { supabaseBizhandle } from './bizhandleClient';
 import { AssignedRunsheet, RunsheetBooking, BookingStatusMap, RouteOptimizationData } from '../utils/runsheetTypes';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://fleet-staging.milesxp.com';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://fleet.milesxp.com';
 
 export async function fetchAssignedRunsheets(dateFrom: string, dateTo: string): Promise<AssignedRunsheet[]> {
     try {
@@ -129,7 +129,7 @@ export async function fetchRunsheetDetail(runsheetId: string): Promise<AssignedR
 export async function fetchRouteOptimization(optimizationId: string): Promise<RouteOptimizationData | null> {
     try {
         console.log('[fetchRouteOptimization] Fetching optimization by ID:', optimizationId);
-        
+
         const { data, error } = await supabase
             .from('route_optimizations')
             .select(`
